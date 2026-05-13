@@ -111,6 +111,52 @@ function weightedRandom(providers: ModelProvider[]): ModelProvider {
   return providers[providers.length - 1];
 }
 
+// ---------------------------------------------------------------------------
+// Session affinity — keep cache-hot sessions routed to the same provider
+// ---------------------------------------------------------------------------
+
+function buildAffinitySeed(body: Record<string, unknown>): string | null {
+  const model = String(body.model ?? "");
+
+  // Explicit session ID via `user` field (industry standard)
+  if (body.user && typeof body.user === "string" && body.user.length > 0) {
+    return `${model}::user::${body.user}`;
+  }
+
+  // Implicit: first non-system message content
+  const messages = body.messages;
+  if (Array.isArray(messages) && messages.length > 0) {
+    const firstUserMsg = (messages as any[]).find(
+      (m: any) => m.role !== "system"
+    );
+    if (firstUserMsg?.content) {
+      const content =
+        typeof firstUserMsg.content === "string"
+          ? firstUserMsg.content
+          : JSON.stringify(firstUserMsg.content);
+      if (content.length > 0) {
+        return `${model}::msg::${content}`;
+      }
+    }
+  }
+
+  return null; // no affinity — use random
+}
+
+function selectAffinityProvider(
+  providers: ModelProvider[],
+  seed: string
+): ModelProvider {
+  const h = Number(Bun.hash(seed));
+  const totalWeight = providers.reduce((sum, p) => sum + p.weight, 0);
+  let r = ((h % totalWeight) + totalWeight) % totalWeight; // positive mod
+  for (const p of providers) {
+    r -= p.weight;
+    if (r < 0) return p;
+  }
+  return providers[providers.length - 1];
+}
+
 // HTTP statuses that indicate a transient / provider-side issue worth falling back
 const FALLBACK_STATUSES = new Set([429, 500, 502, 503, 504]);
 
@@ -162,8 +208,18 @@ async function handleChatCompletion(req: Request): Promise<Response> {
   let candidates = [...route.providers];
   let lastErrorResponse: Response | null = null;
 
+  // Generate affinity seed once — same session → same first choice
+  const affinitySeed = buildAffinitySeed(body);
+  let useAffinity = affinitySeed !== null;
+
   while (candidates.length > 0) {
-    const selected = weightedRandom(candidates);
+    const selected = useAffinity
+      ? selectAffinityProvider(candidates, affinitySeed!)
+      : weightedRandom(candidates);
+    if (useAffinity && affinitySeed) {
+      console.log(`[Affinity] Session sticky → ${selected.name} (${modelName})`);
+    }
+    useAffinity = false; // only first attempt uses sticky routing
     const providerCfg = cfg.providers[selected.name];
 
     if (!providerCfg) {

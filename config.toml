@@ -35,6 +35,25 @@ name = "vercel"
 weight = 5
 remap = "openai/gpt-5.5"
 
+[models."anthropic/claude-opus-4.7"]
+
+[[models."anthropic/claude-opus-4.7".providers]]
+
+[[models."anthropic/claude-opus-4.7".providers]]
+name = "openrouter"
+weight = 5
+remap = "anthropic/claude-opus-4.7"
+
+[[models."anthropic/claude-opus-4.7".providers]]
+name = "aihubmix"
+weight = 5
+remap = "claude-opus-4.7"
+    
+[[models."anthropic/claude-opus-4.7".providers]]
+name = "vercel"
+weight = 5
+remap = "anthropic/claude-opus-4.7"
+
 [models."google/gemini-3.1-pro-preview"]
 
 [[models."google/gemini-3.1-pro-preview".providers]]

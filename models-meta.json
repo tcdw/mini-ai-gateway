@@ -28,5 +28,11 @@
     "name": "DeepSeek V4 Pro",
     "context_window": 1048576,
     "max_output_tokens": 393216
+  },
+  "anthropic/claude-opus-4.7": {
+    "id": "anthropic/claude-opus-4.7",
+    "name": "Claude Opus 4.7",
+    "context_window": 1000000,
+    "max_output_tokens": 128000
   }
 }

@@ -112,15 +112,21 @@ function weightedRandom(providers: ModelProvider[]): ModelProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Session affinity — keep cache-hot sessions routed to the same provider
+// Session affinity — stateful in-memory pinning with TTL
 // ---------------------------------------------------------------------------
 
-function buildAffinitySeed(body: Record<string, unknown>): string | null {
-  const model = String(body.model ?? "");
+interface SessionPin {
+  providerName: string;
+  lastAccessed: number;
+}
 
+const SESSION_PIN_TTL = 10 * 60 * 1000; // 10 minutes — matches upstream prompt cache lifetime
+const sessionPins = new Map<string, SessionPin>();
+
+function extractSessionId(body: Record<string, unknown>): string | null {
   // Explicit session ID via `user` field (industry standard)
   if (body.user && typeof body.user === "string" && body.user.length > 0) {
-    return `${model}::user::${body.user}`;
+    return `user::${body.user}`;
   }
 
   // Implicit: first non-system message content
@@ -135,27 +141,49 @@ function buildAffinitySeed(body: Record<string, unknown>): string | null {
           ? firstUserMsg.content
           : JSON.stringify(firstUserMsg.content);
       if (content.length > 0) {
-        return `${model}::msg::${content}`;
+        return `msg::${content}`;
       }
     }
   }
 
-  return null; // no affinity — use random
+  return null;
 }
 
-function selectAffinityProvider(
-  providers: ModelProvider[],
-  seed: string
-): ModelProvider {
-  const h = Number(Bun.hash(seed));
-  const totalWeight = providers.reduce((sum, p) => sum + p.weight, 0);
-  let r = ((h % totalWeight) + totalWeight) % totalWeight; // positive mod
-  for (const p of providers) {
-    r -= p.weight;
-    if (r < 0) return p;
+function lookupPin(
+  sessionId: string,
+  candidates: ModelProvider[]
+): ModelProvider | null {
+  const pin = sessionPins.get(sessionId);
+  if (!pin) return null;
+
+  if (Date.now() - pin.lastAccessed > SESSION_PIN_TTL) {
+    sessionPins.delete(sessionId);
+    return null;
   }
-  return providers[providers.length - 1];
+
+  const match = candidates.find((p) => p.name === pin.providerName);
+  if (!match) {
+    sessionPins.delete(sessionId);
+    return null;
+  }
+
+  pin.lastAccessed = Date.now();
+  return match;
 }
+
+function savePin(sessionId: string, providerName: string) {
+  sessionPins.set(sessionId, { providerName, lastAccessed: Date.now() });
+}
+
+// Periodic cleanup of expired entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, pin] of sessionPins) {
+    if (now - pin.lastAccessed > SESSION_PIN_TTL) {
+      sessionPins.delete(id);
+    }
+  }
+}, 5 * 60 * 1000).unref();
 
 // HTTP statuses that indicate a transient / provider-side issue worth falling back
 const FALLBACK_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -208,18 +236,31 @@ async function handleChatCompletion(req: Request): Promise<Response> {
   let candidates = [...route.providers];
   let lastErrorResponse: Response | null = null;
 
-  // Generate affinity seed once — same session → same first choice
-  const affinitySeed = buildAffinitySeed(body);
-  let useAffinity = affinitySeed !== null;
+  // Session affinity — try pinned provider first, fallback to weighted random
+  const sessionId = extractSessionId(body);
+  let usePin = sessionId !== null;
 
   while (candidates.length > 0) {
-    const selected = useAffinity
-      ? selectAffinityProvider(candidates, affinitySeed!)
-      : weightedRandom(candidates);
-    if (useAffinity && affinitySeed) {
-      console.log(`[Affinity] Session sticky → ${selected.name} (${modelName})`);
+    let selected: ModelProvider;
+
+    if (usePin && sessionId) {
+      const pinned = lookupPin(sessionId, candidates);
+      if (pinned) {
+        selected = pinned;
+        console.log(
+          `[Affinity] Session pinned → ${selected.name} (${modelName})`
+        );
+      } else {
+        selected = weightedRandom(candidates);
+        savePin(sessionId, selected.name);
+        console.log(
+          `[Affinity] Session new pin → ${selected.name} (${modelName})`
+        );
+      }
+      usePin = false; // only first attempt uses pin
+    } else {
+      selected = weightedRandom(candidates);
     }
-    useAffinity = false; // only first attempt uses sticky routing
     const providerCfg = cfg.providers[selected.name];
 
     if (!providerCfg) {
@@ -257,6 +298,7 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
       // Success — stream back to client directly
       if (upstream.ok) {
+        if (sessionId) savePin(sessionId, selected.name);
         console.log(
           `[Gateway] → ${selected.name} (${modelName}) — ${upstream.status}`
         );

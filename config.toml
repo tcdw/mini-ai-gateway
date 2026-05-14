@@ -74,3 +74,11 @@ remap = "mimo-v2.5-pro"
 [[models."xiaomi/mimo-v2.5".providers]]
 name = "xiaomi"
 remap = "mimo-v2.5"
+
+[[models."qwen/qwen3.6-max-preview".providers]]
+name = "openrouter"
+remap = "qwen/qwen3.6-max-preview"
+
+[[models."z-ai/glm-5.1".providers]]
+name = "openrouter"
+remap = "z-ai/glm-5.1"

@@ -18,6 +18,11 @@ baseUrl = "https://api.deepseek.com/v1"
 authHeader = "Bearer"
 keyEnvVar = "DEEPSEEK_API_KEY"
 
+[providers.xiaomi]
+baseUrl = "https://api.xiaomimimo.com/v1"
+authHeader = "Bearer"
+keyEnvVar = "XIAOMI_API_KEY"
+
 [models."openai/gpt-5.5"]
 
 [[models."openai/gpt-5.5".providers]]
@@ -25,12 +30,12 @@ name = "openrouter"
 remap = "openai/gpt-5.5"
 
 [[models."openai/gpt-5.5".providers]]
-name = "aihubmix"
-remap = "gpt-5.5"
-
-[[models."openai/gpt-5.5".providers]]
 name = "vercel"
 remap = "openai/gpt-5.5"
+
+[[models."openai/gpt-5.5".providers]]
+name = "aihubmix"
+remap = "gpt-5.5"
 
 [models."anthropic/claude-opus-4.7"]
 
@@ -39,12 +44,12 @@ name = "openrouter"
 remap = "anthropic/claude-opus-4.7"
 
 [[models."anthropic/claude-opus-4.7".providers]]
-name = "aihubmix"
-remap = "claude-opus-4.7"
-    
-[[models."anthropic/claude-opus-4.7".providers]]
 name = "vercel"
 remap = "anthropic/claude-opus-4.7"
+
+[[models."anthropic/claude-opus-4.7".providers]]
+name = "aihubmix"
+remap = "claude-opus-4.7"
 
 [models."google/gemini-3.1-pro-preview"]
 
@@ -53,12 +58,12 @@ name = "openrouter"
 remap = "google/gemini-3.1-pro-preview"
 
 [[models."google/gemini-3.1-pro-preview".providers]]
-name = "aihubmix"
-remap = "gemini-3.1-pro-preview"
-
-[[models."google/gemini-3.1-pro-preview".providers]]
 name = "vercel"
 remap = "google/gemini-3.1-pro-preview"
+
+[[models."google/gemini-3.1-pro-preview".providers]]
+name = "aihubmix"
+remap = "gemini-3.1-pro-preview"
 
 [models."deepseek/deepseek-v4-flash"]
 
@@ -71,3 +76,13 @@ remap = "deepseek-v4-flash"
 [[models."deepseek/deepseek-v4-pro".providers]]
 name = "deepseek"
 remap = "deepseek-v4-pro"
+
+[models."xiaomi/mimo-v2.5-pro"]
+
+[[models."xiaomi/mimo-v2.5-pro".providers]]
+name = "xiaomi"
+remap = "mimo-v2.5-pro"
+
+[[models."xiaomi/mimo-v2.5".providers]]
+name = "xiaomi"
+remap = "mimo-v2.5"

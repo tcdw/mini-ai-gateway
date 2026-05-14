@@ -34,5 +34,17 @@
     "name": "Claude Opus 4.7",
     "context_window": 1000000,
     "max_output_tokens": 128000
+  },
+  "xiaomi/mimo-v2.5-pro": {
+    "id": "xiaomi/mimo-v2.5-pro",
+    "name": "Xiaomi: MiMo-V2.5-Pro",
+    "context_window": 1048576,
+    "max_output_tokens": 131072
+  },
+  "xiaomi/mimo-v2.5": {
+    "id": "xiaomi/mimo-v2.5",
+    "name": "Xiaomi: MiMo-V2.5",
+    "context_window": 1048576,
+    "max_output_tokens": 131072
   }
 }

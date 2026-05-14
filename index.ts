@@ -12,7 +12,6 @@ interface ProviderConfig {
 
 interface ModelProvider {
   name: string;
-  weight: number;
   remap: string;
 }
 
@@ -101,90 +100,6 @@ function openAIError(
   return jsonResponse({ error: { message, type, code } }, status);
 }
 
-function weightedRandom(providers: ModelProvider[]): ModelProvider {
-  const totalWeight = providers.reduce((sum, p) => sum + p.weight, 0);
-  let r = Math.random() * totalWeight;
-  for (const p of providers) {
-    r -= p.weight;
-    if (r <= 0) return p;
-  }
-  return providers[providers.length - 1];
-}
-
-// ---------------------------------------------------------------------------
-// Session affinity — stateful in-memory pinning with TTL
-// ---------------------------------------------------------------------------
-
-interface SessionPin {
-  providerName: string;
-  lastAccessed: number;
-}
-
-const SESSION_PIN_TTL = 10 * 60 * 1000; // 10 minutes — matches upstream prompt cache lifetime
-const sessionPins = new Map<string, SessionPin>();
-
-function extractSessionId(body: Record<string, unknown>): string | null {
-  // Explicit session ID via `user` field (industry standard)
-  if (body.user && typeof body.user === "string" && body.user.length > 0) {
-    return `user::${body.user}`;
-  }
-
-  // Implicit: first non-system message content
-  const messages = body.messages;
-  if (Array.isArray(messages) && messages.length > 0) {
-    const firstUserMsg = (messages as any[]).find(
-      (m: any) => m.role !== "system"
-    );
-    if (firstUserMsg?.content) {
-      const content =
-        typeof firstUserMsg.content === "string"
-          ? firstUserMsg.content
-          : JSON.stringify(firstUserMsg.content);
-      if (content.length > 0) {
-        return `msg::${content}`;
-      }
-    }
-  }
-
-  return null;
-}
-
-function lookupPin(
-  sessionId: string,
-  candidates: ModelProvider[]
-): ModelProvider | null {
-  const pin = sessionPins.get(sessionId);
-  if (!pin) return null;
-
-  if (Date.now() - pin.lastAccessed > SESSION_PIN_TTL) {
-    sessionPins.delete(sessionId);
-    return null;
-  }
-
-  const match = candidates.find((p) => p.name === pin.providerName);
-  if (!match) {
-    sessionPins.delete(sessionId);
-    return null;
-  }
-
-  pin.lastAccessed = Date.now();
-  return match;
-}
-
-function savePin(sessionId: string, providerName: string) {
-  sessionPins.set(sessionId, { providerName, lastAccessed: Date.now() });
-}
-
-// Periodic cleanup of expired entries
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, pin] of sessionPins) {
-    if (now - pin.lastAccessed > SESSION_PIN_TTL) {
-      sessionPins.delete(id);
-    }
-  }
-}, 5 * 60 * 1000).unref();
-
 // HTTP statuses that indicate a transient / provider-side issue worth falling back
 const FALLBACK_STATUSES = new Set([429, 500, 502, 503, 504]);
 
@@ -211,7 +126,7 @@ async function handleChatCompletion(req: Request): Promise<Response> {
   // Parse body
   let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    body = (await req.json()) as Record<string, unknown>;
   } catch {
     return openAIError("Invalid JSON body", "invalid_request_error", null, 400);
   }
@@ -232,35 +147,12 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     );
   }
 
-  // Load-balance with fallback
+  // Sequential fallback: try first provider, fallback on 429 etc.
   let candidates = [...route.providers];
   let lastErrorResponse: Response | null = null;
 
-  // Session affinity — try pinned provider first, fallback to weighted random
-  const sessionId = extractSessionId(body);
-  let usePin = sessionId !== null;
-
   while (candidates.length > 0) {
-    let selected: ModelProvider;
-
-    if (usePin && sessionId) {
-      const pinned = lookupPin(sessionId, candidates);
-      if (pinned) {
-        selected = pinned;
-        console.log(
-          `[Affinity] Session pinned → ${selected.name} (${modelName})`
-        );
-      } else {
-        selected = weightedRandom(candidates);
-        savePin(sessionId, selected.name);
-        console.log(
-          `[Affinity] Session new pin → ${selected.name} (${modelName})`
-        );
-      }
-      usePin = false; // only first attempt uses pin
-    } else {
-      selected = weightedRandom(candidates);
-    }
+    const selected = candidates[0]!;
     const providerCfg = cfg.providers[selected.name];
 
     if (!providerCfg) {
@@ -298,7 +190,6 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
       // Success — stream back to client directly
       if (upstream.ok) {
-        if (sessionId) savePin(sessionId, selected.name);
         console.log(
           `[Gateway] → ${selected.name} (${modelName}) — ${upstream.status}`
         );

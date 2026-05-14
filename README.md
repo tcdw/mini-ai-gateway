@@ -2,14 +2,12 @@
 
 一个**极致轻量、专注转发**的私有 OpenAI Compatible API 网关。
 
-专为“自己使用多渠道 API”的场景设计，将散落在各处的 Provider（OpenRouter、Vercel AI Gateway、各种转发 API 站）收拢为一个统一的入口。客户端只需认准统一的虚拟模型 ID（如 `openai/gpt-4o`），网关会在幕后为你搞定负载均衡、故障转移与会话保持。
+专为“自己使用多渠道 API”的场景设计，将散落在各处的 Provider（OpenRouter、Vercel AI Gateway、各种转发 API 站）收拢为一个统一的入口。客户端只需认准统一的虚拟模型 ID（如 `openai/gpt-5.5`），网关会按配置顺序使用第一个可用 Provider，遇 429/5xx 自动回退到下一个。
 
 ## ✨ 特性 (Features)
 
 *   **极简核心**：基于 [Bun](https://bun.sh) 原生 HTTP `serve()` 构建，零外部依赖，极速启动与响应。
 *   **配置即路由**：使用直观的 TOML 配置文件定义 Provider 与模型映射。
-*   **智能负载均衡**：支持按权重分配请求，遇到上游 5xx、429 等错误自动切流（Fallback）。
-*   **省钱的会话保持 (Session Affinity)**：自动识别对话上下文，跨模型智能 Pin 定同一个 Provider，最大化命中上游 Prompt Cache，避免反复全量计费。
 *   **元数据同步**：自带爬虫脚本同步 models.dev 元数据，完美支持客户端的 `/v1/models` 容量查询。
 *   **原生流式透传**：无缓冲直接透传 SSE 流，不增加首字节延迟（TTFB）。
 

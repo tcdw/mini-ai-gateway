@@ -24,16 +24,16 @@ authHeader = "Bearer"
 keyEnvVar = "XIAOMI_API_KEY"
 
 [[models."openai/gpt-5.5".providers]]
-name = "openrouter"
-remap = "openai/gpt-5.5"
-
-[[models."openai/gpt-5.5".providers]]
 name = "vercel"
 remap = "openai/gpt-5.5"
 
 [[models."openai/gpt-5.5".providers]]
 name = "aihubmix"
 remap = "gpt-5.5"
+
+[[models."openai/gpt-5.5".providers]]
+name = "openrouter"
+remap = "openai/gpt-5.5"
 
 [[models."anthropic/claude-opus-4.7".providers]]
 name = "openrouter"
@@ -103,14 +103,30 @@ remap = "moonshotai/kimi-k2.6"
 name = "openrouter"
 remap = "google/gemini-3.1-flash-image-preview"
 
+[[models."google/gemini-3.1-flash-image-preview".providers]]
+name = "vercel"
+remap = "google/gemini-3.1-flash-image-preview"
+
 [[models."google/gemini-3-pro-image-preview".providers]]
 name = "openrouter"
 remap = "google/gemini-3-pro-image-preview"
+
+[[models."google/gemini-3-pro-image-preview".providers]]
+name = "vercel"
+remap = "google/gemini-3-pro-image"
 
 [[models."google/gemini-2.5-flash-image".providers]]
 name = "openrouter"
 remap = "google/gemini-2.5-flash-image"
 
-[[models."openai/gpt-5-image".providers]]
+[[models."google/gemini-2.5-flash-image".providers]]
+name = "vercel"
+remap = "google/gemini-2.5-flash-image"
+
+[[models."openai/gpt-image-2".providers]]
+name = "vercel"
+remap = "openai/gpt-image-2"
+
+[[models."openai/gpt-image-2".providers]]
 name = "openrouter"
-remap = "openai/gpt-5-image"
+remap = "openai/gpt-5.4-image-2"

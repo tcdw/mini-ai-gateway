@@ -58,5 +58,17 @@
     "name": "GLM-5.1",
     "context_window": 202752,
     "max_output_tokens": 131072
+  },
+  "qwen/qwen3.6-plus": {
+    "id": "qwen/qwen3.6-plus",
+    "name": "Qwen: Qwen3.6 Plus",
+    "context_window": 1000000,
+    "max_output_tokens": 65536
+  },
+  "moonshotai/kimi-k2.6": {
+    "id": "moonshotai/kimi-k2.6",
+    "name": "Kimi K2.6",
+    "context_window": 256000,
+    "max_output_tokens": 65536
   }
 }

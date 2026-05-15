@@ -75,10 +75,26 @@ remap = "mimo-v2.5-pro"
 name = "xiaomi"
 remap = "mimo-v2.5"
 
-[[models."qwen/qwen3.6-max-preview".providers]]
+[[models."qwen/qwen3.6-plus".providers]]
 name = "openrouter"
-remap = "qwen/qwen3.6-max-preview"
+remap = "qwen/qwen3.6-plus"
+
+[[models."qwen/qwen3.6-plus".providers]]
+name = "vercel"
+remap = "alibaba/qwen3.6-plus"
 
 [[models."z-ai/glm-5.1".providers]]
 name = "openrouter"
 remap = "z-ai/glm-5.1"
+
+[[models."z-ai/glm-5.1".providers]]
+name = "vercel"
+remap = "zai/glm-5.1"
+
+[[models."moonshotai/kimi-k2.6".providers]]
+name = "openrouter"
+remap = "moonshotai/kimi-k2.6"
+
+[[models."moonshotai/kimi-k2.6".providers]]
+name = "vercel"
+remap = "moonshotai/kimi-k2.6"

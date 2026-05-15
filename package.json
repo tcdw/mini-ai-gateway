@@ -3,6 +3,13 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "@mini-ai-gateway/core": "workspace:*"
+  },
   "devDependencies": {
     "@inquirer/prompts": "^7",
     "@types/bun": "latest"
@@ -12,6 +19,9 @@
   },
   "scripts": {
     "start": "bun run index.ts",
+    "dev": "bun --hot index.ts",
+    "dev:admin": "bun --filter @mini-ai-gateway/admin dev",
+    "build:admin": "bun --filter @mini-ai-gateway/admin build",
     "scan-models": "bun run scripts/scan-models.ts",
     "sync-models": "bun run scripts/sync-models.ts"
   }

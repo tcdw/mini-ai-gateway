@@ -1,0 +1,23 @@
+{
+  "name": "@mini-ai-gateway/admin",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot ../../index.ts",
+    "build": "bun build ./index.html --outdir ../../dist/admin"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.1.0",
+    "@mini-ai-gateway/core": "workspace:*",
+    "@tanstack/react-query": "^5.90.12",
+    "@tanstack/react-router": "^1.139.1",
+    "antd": "^6.1.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

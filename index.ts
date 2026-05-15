@@ -1,35 +1,21 @@
-import config from "./config.toml";
+import adminIndex from "./apps/admin/index.html";
+import {
+  addModelMappings,
+  addModelProviderMapping,
+  generateClientConfig,
+  pickDefaultModel,
+  readGatewayConfig,
+  readModelsMeta,
+  reorderModelProviders,
+  scanProviderModels,
+  toAdminConfigSnapshot,
+  writeGatewayConfig,
+} from "@mini-ai-gateway/core";
+import type { AppConfig, ModelMeta } from "@mini-ai-gateway/core";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface ProviderConfig {
-  baseUrl: string;
-  authHeader: string;
-  keyEnvVar: string;
-}
-
-interface ModelProvider {
-  name: string;
-  remap: string;
-}
-
-interface ModelRoute {
-  providers: ModelProvider[];
-}
-
-interface AppConfig {
-  providers: Record<string, ProviderConfig>;
-  models: Record<string, ModelRoute>;
-}
-
-interface ModelMeta {
-  id: string;
-  name: string;
-  context_window: number;
-  max_output_tokens: number;
-}
 
 interface OpenAIError {
   error: {
@@ -50,7 +36,7 @@ if (!GATEWAY_KEY) {
 }
 
 const PORT = parseInt(process.env.PORT || "3000");
-const cfg = config as AppConfig;
+let cfg: AppConfig = await readGatewayConfig();
 
 // Warn about missing provider keys (non-fatal — will be handled per-request)
 for (const [name, p] of Object.entries(cfg.providers)) {
@@ -67,9 +53,8 @@ for (const [name, p] of Object.entries(cfg.providers)) {
 
 let modelsMeta: Record<string, ModelMeta> = {};
 {
-  const metaFile = Bun.file("./models-meta.json");
-  if (await metaFile.exists()) {
-    modelsMeta = await metaFile.json();
+  modelsMeta = await readModelsMeta();
+  if (Object.keys(modelsMeta).length > 0) {
     console.log(
       `[Gateway] Loaded models-meta.json (${Object.keys(modelsMeta).length} entries)`
     );
@@ -235,14 +220,141 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Admin API
+// ---------------------------------------------------------------------------
+
+function adminJson(body: object, status = 200) {
+  return jsonResponse(body, status);
+}
+
+function adminError(message: string, status = 400) {
+  return adminJson({ error: message }, status);
+}
+
+function requireAdminAuth(req: Request): Response | null {
+  const auth = req.headers.get("Authorization");
+  if (auth !== `Bearer ${GATEWAY_KEY}`) {
+    return adminError("Invalid gateway API key", 401);
+  }
+
+  return null;
+}
+
+async function handleAdminRequest(
+  req: Request,
+  handler: () => Promise<Response> | Response
+): Promise<Response> {
+  const authError = requireAdminAuth(req);
+  if (authError) return authError;
+
+  try {
+    return await handler();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return adminError(message, 500);
+  }
+}
+
+function getAdminSnapshot() {
+  return toAdminConfigSnapshot(cfg, modelsMeta);
+}
+
+async function persistAdminConfig(next: AppConfig) {
+  cfg = next;
+  await writeGatewayConfig(cfg);
+  return adminJson(getAdminSnapshot());
+}
+
+// ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
 
 Bun.serve({
   port: PORT,
+  routes: {
+    "/admin": adminIndex,
+    "/admin/": adminIndex,
+    "/admin/api/config": {
+      GET: (req) => handleAdminRequest(req, () => adminJson(getAdminSnapshot())),
+    },
+    "/admin/api/providers/:provider/models/scan": {
+      POST: (req) =>
+        handleAdminRequest(req, async () => {
+          const { provider } = req.params;
+          const data = await scanProviderModels(cfg, provider);
+          return adminJson({ data });
+        }),
+    },
+    "/admin/api/models/mappings": {
+      POST: (req) =>
+        handleAdminRequest(req, async () => {
+          const body = (await req.json()) as {
+            provider?: string;
+            modelIds?: string[];
+          };
+          if (!body.provider) return adminError("provider is required");
+          if (!Array.isArray(body.modelIds)) return adminError("modelIds is required");
+
+          const next = addModelMappings(cfg, body.provider, body.modelIds);
+          return await persistAdminConfig(next);
+        }),
+    },
+    "/admin/api/models/:modelId/providers": {
+      POST: (req) =>
+        handleAdminRequest(req, async () => {
+          const body = (await req.json()) as {
+            provider?: string;
+            remap?: string;
+          };
+          if (!body.provider) return adminError("provider is required");
+          if (!body.remap) return adminError("remap is required");
+
+          const modelId = decodeURIComponent(req.params.modelId);
+          const next = addModelProviderMapping(cfg, modelId, body.provider, body.remap);
+          return await persistAdminConfig(next);
+        }),
+      PATCH: (req) =>
+        handleAdminRequest(req, async () => {
+          const body = (await req.json()) as { providers?: string[] };
+          if (!Array.isArray(body.providers)) {
+            return adminError("providers is required");
+          }
+
+          const modelId = decodeURIComponent(req.params.modelId);
+          const next = reorderModelProviders(cfg, modelId, body.providers);
+          return await persistAdminConfig(next);
+        }),
+    },
+    "/admin/api/client-config": {
+      POST: (req) =>
+        handleAdminRequest(req, async () => {
+          const body = (await req.json()) as {
+            kind?: "opencode" | "openai-sdk" | "curl";
+            baseUrl?: string;
+            apiKeyEnvVar?: string;
+            defaultModel?: string;
+          };
+
+          const kind = body.kind ?? "opencode";
+          const baseUrl = body.baseUrl ?? `http://localhost:${PORT}/v1`;
+          const text = generateClientConfig(kind, {
+            baseUrl,
+            apiKeyEnvVar: body.apiKeyEnvVar,
+            defaultModel: body.defaultModel || pickDefaultModel(cfg),
+          });
+
+          return adminJson({ text });
+        }),
+    },
+    "/admin/*": adminIndex,
+  },
   async fetch(req) {
     const start = performance.now();
     const url = new URL(req.url);
+
+    if (url.pathname === "/favicon.ico") {
+      return new Response(null, { status: 204 });
+    }
 
     // Auth
     const auth = req.headers.get("Authorization");

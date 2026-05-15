@@ -1,0 +1,8 @@
+{
+  "name": "@mini-ai-gateway/core",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

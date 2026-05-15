@@ -8,6 +8,7 @@
 
 *   **极简核心**：基于 [Bun](https://bun.sh) 原生 HTTP `serve()` 构建，零外部依赖，极速启动与响应。
 *   **配置即路由**：使用直观的 TOML 配置文件定义 Provider 与模型映射。
+*   **本地 Admin UI**：内置 React 管理台，用于查看模型映射、扫描上游模型、调整 Provider 优先级和生成客户端配置。
 *   **元数据同步**：自带爬虫脚本同步 models.dev 元数据，完美支持客户端的 `/v1/models` 容量查询。
 *   **原生流式透传**：无缓冲直接透传 SSE 流，不增加首字节延迟（TTFB）。
 
@@ -17,7 +18,7 @@
 
 *   **协议转换**：不将 Anthropic、Gemini、Vertex AI 等原生非 OpenAI 协议转为 OpenAI 格式。（推荐让上游诸如 OpenRouter、Vercel 等去做这件事）。
 *   **多租户与计费**：没有用户管理、没有 Quota 限制、没有额度统计面板。网关假定只有一个信任的拥有者在使用。
-*   **复杂 Web UI**：没有后台管理面板，一切通过配置文件和环境变量进行驱动。
+*   **复杂后台系统**：Admin UI 仅面向本地自用，不提供用户管理、审计流、审批流等重型后台能力。
 
 ## 🚀 快速开始
 
@@ -55,3 +56,13 @@ bun run index.ts
 ```
 
 你的统一 API 地址即为 `http://localhost:3000/v1`，使用 `$GATEWAY_API_KEY` 即可连接任意支持 OpenAI 格式的客户端。
+
+### 5. 打开 Admin UI
+
+启动网关后访问：
+
+```txt
+http://localhost:3000/admin
+```
+
+Admin API 使用 `GATEWAY_API_KEY` 鉴权。打开页面后，在右上角填入你的 `GATEWAY_API_KEY` 即可使用管理台。

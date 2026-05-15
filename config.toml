@@ -1,24 +1,24 @@
-[providers.openrouter]
+[providers."openrouter"]
 baseUrl = "https://openrouter.ai/api/v1"
 authHeader = "Bearer"
 keyEnvVar = "OPENROUTER_API_KEY"
 
-[providers.vercel]
+[providers."vercel"]
 baseUrl = "https://ai-gateway.vercel.sh/v1"
 authHeader = "Bearer"
 keyEnvVar = "VERCEL_AI_KEY"
 
-[providers.aihubmix]
+[providers."aihubmix"]
 baseUrl = "https://aihubmix.com/v1"
 authHeader = "Bearer"
 keyEnvVar = "AIHUBMIX_API_KEY"
 
-[providers.deepseek]
+[providers."deepseek"]
 baseUrl = "https://api.deepseek.com/v1"
 authHeader = "Bearer"
 keyEnvVar = "DEEPSEEK_API_KEY"
 
-[providers.xiaomi]
+[providers."xiaomi"]
 baseUrl = "https://api.xiaomimimo.com/v1"
 authHeader = "Bearer"
 keyEnvVar = "XIAOMI_API_KEY"
@@ -98,3 +98,19 @@ remap = "moonshotai/kimi-k2.6"
 [[models."moonshotai/kimi-k2.6".providers]]
 name = "vercel"
 remap = "moonshotai/kimi-k2.6"
+
+[[models."google/gemini-3.1-flash-image-preview".providers]]
+name = "openrouter"
+remap = "google/gemini-3.1-flash-image-preview"
+
+[[models."google/gemini-3-pro-image-preview".providers]]
+name = "openrouter"
+remap = "google/gemini-3-pro-image-preview"
+
+[[models."google/gemini-2.5-flash-image".providers]]
+name = "openrouter"
+remap = "google/gemini-2.5-flash-image"
+
+[[models."openai/gpt-5-image".providers]]
+name = "openrouter"
+remap = "openai/gpt-5-image"

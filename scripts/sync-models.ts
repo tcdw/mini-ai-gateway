@@ -1,4 +1,4 @@
-import config from "../config.toml";
+import { readGatewayConfig } from "@mini-ai-gateway/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,6 +50,8 @@ function flattenModels(data: ModelsDevData): Record<string, ModelsDevModel> {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  const config = await readGatewayConfig();
+
   // ------------------------------------------------------------------
   // Load existing meta (incremental: skip models already synced)
   // ------------------------------------------------------------------

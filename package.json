@@ -9,5 +9,10 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "scripts": {
+    "start": "bun run index.ts",
+    "scan-models": "bun run scripts/scan-models.ts",
+    "sync-models": "bun run scripts/sync-models.ts"
   }
 }

@@ -98,9 +98,9 @@ function getModelsList() {
       owned_by: modelId.split("/")[0],
       ...(meta
         ? {
-            context_window: meta.context_window,
-            max_output_tokens: meta.max_output_tokens,
-          }
+          context_window: meta.context_window,
+          max_output_tokens: meta.max_output_tokens,
+        }
         : {}),
     };
   });

@@ -42,7 +42,7 @@ let cfg: AppConfig = await readGatewayConfig();
 for (const [name, p] of Object.entries(cfg.providers)) {
   if (!process.env[p.keyEnvVar]) {
     console.warn(
-      `[Gateway] Warning: env var ${p.keyEnvVar} not set — provider "${name}" will be skipped at runtime`
+      `[Gateway] Warning: env var ${p.keyEnvVar} not set — provider "${name}" will be skipped at runtime`,
     );
   }
 }
@@ -56,11 +56,11 @@ let modelsMeta: Record<string, ModelMeta> = {};
   modelsMeta = await readModelsMeta();
   if (Object.keys(modelsMeta).length > 0) {
     console.log(
-      `[Gateway] Loaded models-meta.json (${Object.keys(modelsMeta).length} entries)`
+      `[Gateway] Loaded models-meta.json (${Object.keys(modelsMeta).length} entries)`,
     );
   } else {
     console.warn(
-      "[Gateway] models-meta.json not found — run scripts/sync-models.ts to populate it"
+      "[Gateway] models-meta.json not found — run scripts/sync-models.ts to populate it",
     );
   }
 }
@@ -80,7 +80,7 @@ function openAIError(
   message: string,
   type: string,
   code: string | null,
-  status: number
+  status: number,
 ) {
   return jsonResponse({ error: { message, type, code } }, status);
 }
@@ -98,18 +98,110 @@ function getModelsList() {
       owned_by: modelId.split("/")[0],
       ...(meta
         ? {
-          context_window: meta.context_window,
-          max_output_tokens: meta.max_output_tokens,
-          ...(meta.modalities ? { modalities: meta.modalities } : {}),
-        }
+            context_window: meta.context_window,
+            max_output_tokens: meta.max_output_tokens,
+            ...(meta.modalities ? { modalities: meta.modalities } : {}),
+          }
         : {}),
     };
   });
   return jsonResponse({ object: "list", data }, 200);
 }
 
+async function forwardToUpstream(
+  modelName: string,
+  body: Record<string, unknown>,
+  upstreamPath: string,
+): Promise<Response> {
+  const route = cfg.models[modelName];
+  if (!route) {
+    return openAIError(
+      `Model '${modelName}' not found`,
+      "model_not_found",
+      null,
+      404,
+    );
+  }
+
+  let candidates = [...route.providers];
+  let lastErrorResponse: Response | null = null;
+
+  while (candidates.length > 0) {
+    const selected = candidates[0]!;
+    const providerCfg = cfg.providers[selected.name];
+
+    if (!providerCfg) {
+      console.warn(
+        `[Gateway] Provider "${selected.name}" not defined in config — skipped`,
+      );
+      candidates = candidates.filter((p) => p.name !== selected.name);
+      continue;
+    }
+
+    const apiKey = process.env[providerCfg.keyEnvVar];
+    if (!apiKey) {
+      console.warn(
+        `[Fallback] Provider "${selected.name}" skipped: env var ${providerCfg.keyEnvVar} not set`,
+      );
+      candidates = candidates.filter((p) => p.name !== selected.name);
+      continue;
+    }
+
+    const upstreamBody = { ...body, model: selected.remap };
+
+    try {
+      const upstream = await fetch(`${providerCfg.baseUrl}/${upstreamPath}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `${providerCfg.authHeader} ${apiKey}`,
+        },
+        body: JSON.stringify(upstreamBody),
+      });
+
+      if (upstream.ok) {
+        console.log(
+          `[Gateway] → ${selected.name} (${modelName}) — ${upstream.status}`,
+        );
+        return upstream;
+      }
+
+      if (FALLBACK_STATUSES.has(upstream.status)) {
+        console.warn(
+          `[Fallback] Provider "${selected.name}" returned ${upstream.status}, shifting...`,
+        );
+        lastErrorResponse = upstream;
+        candidates = candidates.filter((p) => p.name !== selected.name);
+        continue;
+      }
+
+      return upstream;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[Fallback] Provider "${selected.name}" unreachable: ${message}`,
+      );
+      lastErrorResponse = openAIError(
+        `Upstream unreachable: ${message}`,
+        "upstream_error",
+        null,
+        502,
+      );
+      candidates = candidates.filter((p) => p.name !== selected.name);
+    }
+  }
+
+  if (lastErrorResponse) return lastErrorResponse;
+
+  return openAIError(
+    `No available providers for model '${modelName}'`,
+    "upstream_error",
+    null,
+    502,
+  );
+}
+
 async function handleChatCompletion(req: Request): Promise<Response> {
-  // Parse body
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -122,102 +214,23 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     return openAIError("model is required", "invalid_request_error", null, 400);
   }
 
-  // Look up model route
-  const route = cfg.models[modelName];
-  if (!route) {
-    return openAIError(
-      `Model '${modelName}' not found`,
-      "model_not_found",
-      null,
-      404
-    );
+  return forwardToUpstream(modelName, body, "chat/completions");
+}
+
+async function handleImageGeneration(req: Request): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return openAIError("Invalid JSON body", "invalid_request_error", null, 400);
   }
 
-  // Sequential fallback: try first provider, fallback on 429 etc.
-  let candidates = [...route.providers];
-  let lastErrorResponse: Response | null = null;
-
-  while (candidates.length > 0) {
-    const selected = candidates[0]!;
-    const providerCfg = cfg.providers[selected.name];
-
-    if (!providerCfg) {
-      console.warn(
-        `[Gateway] Provider "${selected.name}" not defined in config — skipped`
-      );
-      candidates = candidates.filter((p) => p.name !== selected.name);
-      continue;
-    }
-
-    const apiKey = process.env[providerCfg.keyEnvVar];
-    if (!apiKey) {
-      console.warn(
-        `[Fallback] Provider "${selected.name}" skipped: env var ${providerCfg.keyEnvVar} not set`
-      );
-      candidates = candidates.filter((p) => p.name !== selected.name);
-      continue;
-    }
-
-    // Remap model name
-    const upstreamBody = { ...body, model: selected.remap };
-
-    try {
-      const upstream = await fetch(
-        `${providerCfg.baseUrl}/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `${providerCfg.authHeader} ${apiKey}`,
-          },
-          body: JSON.stringify(upstreamBody),
-        }
-      );
-
-      // Success — stream back to client directly
-      if (upstream.ok) {
-        console.log(
-          `[Gateway] → ${selected.name} (${modelName}) — ${upstream.status}`
-        );
-        return upstream;
-      }
-
-      // Transient upstream failure → try next provider
-      if (FALLBACK_STATUSES.has(upstream.status)) {
-        console.warn(
-          `[Fallback] Provider "${selected.name}" returned ${upstream.status}, shifting...`
-        );
-        lastErrorResponse = upstream;
-        candidates = candidates.filter((p) => p.name !== selected.name);
-        continue;
-      }
-
-      // Non-transient error (400, 401, 404, etc.) → return directly
-      return upstream;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `[Fallback] Provider "${selected.name}" unreachable: ${message}`
-      );
-      lastErrorResponse = openAIError(
-        `Upstream unreachable: ${message}`,
-        "upstream_error",
-        null,
-        502
-      );
-      candidates = candidates.filter((p) => p.name !== selected.name);
-    }
+  const modelName = body.model;
+  if (typeof modelName !== "string" || !modelName) {
+    return openAIError("model is required", "invalid_request_error", null, 400);
   }
 
-  // All candidates exhausted
-  if (lastErrorResponse) return lastErrorResponse;
-
-  return openAIError(
-    `No available providers for model '${modelName}'`,
-    "upstream_error",
-    null,
-    502
-  );
+  return forwardToUpstream(modelName, body, "images/generations");
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +256,7 @@ function requireAdminAuth(req: Request): Response | null {
 
 async function handleAdminRequest(
   req: Request,
-  handler: () => Promise<Response> | Response
+  handler: () => Promise<Response> | Response,
 ): Promise<Response> {
   const authError = requireAdminAuth(req);
   if (authError) return authError;
@@ -276,7 +289,8 @@ Bun.serve({
     "/admin": adminIndex,
     "/admin/": adminIndex,
     "/admin/api/config": {
-      GET: (req) => handleAdminRequest(req, () => adminJson(getAdminSnapshot())),
+      GET: (req) =>
+        handleAdminRequest(req, () => adminJson(getAdminSnapshot())),
     },
     "/admin/api/providers/:provider/models/scan": {
       POST: (req) =>
@@ -294,7 +308,8 @@ Bun.serve({
             modelIds?: string[];
           };
           if (!body.provider) return adminError("provider is required");
-          if (!Array.isArray(body.modelIds)) return adminError("modelIds is required");
+          if (!Array.isArray(body.modelIds))
+            return adminError("modelIds is required");
 
           const next = addModelMappings(cfg, body.provider, body.modelIds);
           return await persistAdminConfig(next);
@@ -311,7 +326,12 @@ Bun.serve({
           if (!body.remap) return adminError("remap is required");
 
           const modelId = decodeURIComponent(req.params.modelId);
-          const next = addModelProviderMapping(cfg, modelId, body.provider, body.remap);
+          const next = addModelProviderMapping(
+            cfg,
+            modelId,
+            body.provider,
+            body.remap,
+          );
           return await persistAdminConfig(next);
         }),
       PATCH: (req) =>
@@ -371,13 +391,18 @@ Bun.serve({
       req.method === "POST"
     ) {
       res = await handleChatCompletion(req);
+    } else if (
+      url.pathname === "/v1/images/generations" &&
+      req.method === "POST"
+    ) {
+      res = await handleImageGeneration(req);
     } else {
       res = openAIError("Not found", "not_found", null, 404);
     }
 
     const elapsed = performance.now() - start;
     console.log(
-      `[Gateway] ${req.method} ${url.pathname} → ${res.status} (${elapsed.toFixed(0)}ms)`
+      `[Gateway] ${req.method} ${url.pathname} → ${res.status} (${elapsed.toFixed(0)}ms)`,
     );
     return res;
   },

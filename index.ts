@@ -100,6 +100,7 @@ function getModelsList() {
         ? {
           context_window: meta.context_window,
           max_output_tokens: meta.max_output_tokens,
+          ...(meta.modalities ? { modalities: meta.modalities } : {}),
         }
         : {}),
     };
@@ -341,6 +342,8 @@ Bun.serve({
             baseUrl,
             apiKeyEnvVar: body.apiKeyEnvVar,
             defaultModel: body.defaultModel || pickDefaultModel(cfg),
+            modelIds: Object.keys(cfg.models),
+            modelsMeta,
           });
 
           return adminJson({ text });

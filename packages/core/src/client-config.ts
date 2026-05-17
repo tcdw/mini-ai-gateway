@@ -1,4 +1,4 @@
-import type { AppConfig } from "./types";
+import type { AppConfig, ModelMeta } from "./types";
 
 export type ClientConfigKind = "opencode" | "openai-sdk" | "curl";
 
@@ -6,6 +6,8 @@ export interface ClientConfigOptions {
   baseUrl: string;
   apiKeyEnvVar?: string;
   defaultModel?: string;
+  modelIds?: string[];
+  modelsMeta?: Record<string, ModelMeta>;
 }
 
 export function pickDefaultModel(cfg: AppConfig): string {
@@ -18,6 +20,19 @@ export function generateClientConfig(
 ): string {
   const apiKey = options.apiKeyEnvVar || "GATEWAY_API_KEY";
   const model = options.defaultModel || "openai/gpt-5.5";
+  const modelIds = Array.from(new Set([...(options.modelIds ?? []), model]));
+  const opencodeModels = Object.fromEntries(
+    modelIds.map((modelId) => {
+      const meta = options.modelsMeta?.[modelId];
+      return [
+        modelId,
+        {
+          name: meta?.name ?? modelId,
+          ...(meta?.modalities ? { modalities: meta.modalities } : {}),
+        },
+      ];
+    })
+  );
 
   if (kind === "opencode") {
     return JSON.stringify(
@@ -29,9 +44,7 @@ export function generateClientConfig(
               baseURL: options.baseUrl,
               apiKey: `{env:${apiKey}}`,
             },
-            models: {
-              [model]: {},
-            },
+            models: opencodeModels,
           },
         },
         model: `mini-ai-gateway/${model}`,

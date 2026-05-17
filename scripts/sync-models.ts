@@ -8,6 +8,10 @@ interface ModelsDevModel {
   id: string;
   name: string;
   limit?: { context?: number; output?: number };
+  modalities?: {
+    input?: string[];
+    output?: string[];
+  };
 }
 
 interface ModelsDevProvider {
@@ -23,6 +27,10 @@ interface ModelMeta {
   name: string;
   context_window: number;
   max_output_tokens: number;
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
 }
 
 type MetaFile = Record<string, ModelMeta>;
@@ -45,6 +53,32 @@ function flattenModels(data: ModelsDevData): Record<string, ModelsDevModel> {
   return flat;
 }
 
+function normalizeModalities(
+  modalities: ModelsDevModel["modalities"]
+): ModelMeta["modalities"] | undefined {
+  if (!modalities) return undefined;
+  if (!Array.isArray(modalities.input) || !Array.isArray(modalities.output)) {
+    return undefined;
+  }
+
+  return {
+    input: modalities.input.filter((value) => typeof value === "string"),
+    output: modalities.output.filter((value) => typeof value === "string"),
+  };
+}
+
+function buildModelMeta(modelId: string, found: ModelsDevModel): ModelMeta {
+  const modalities = normalizeModalities(found.modalities);
+
+  return {
+    id: modelId,
+    name: found.name || modelId,
+    context_window: found.limit?.context || 8192,
+    max_output_tokens: found.limit?.output || 4096,
+    ...(modalities ? { modalities } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -53,7 +87,7 @@ async function main() {
   const config = await readGatewayConfig();
 
   // ------------------------------------------------------------------
-  // Load existing meta (incremental: skip models already synced)
+  // Load existing meta (preserve entries that are no longer in config)
   // ------------------------------------------------------------------
   const metaFile = Bun.file("./models-meta.json");
   let existingMeta: MetaFile = {};
@@ -93,12 +127,6 @@ async function main() {
   let notFound = 0;
 
   for (const [modelId, route] of Object.entries(config.models)) {
-    // Skip if already synced
-    if (existingMeta[modelId]) {
-      skipped++;
-      continue;
-    }
-
     // Build a list of candidate IDs to try:
     //   1) the config key itself (e.g. "openai/gpt-5.1")
     //   2) the portion after the last "/" (e.g. "gpt-5.1")
@@ -129,13 +157,18 @@ async function main() {
     }
 
     if (found) {
-      existingMeta[modelId] = {
-        id: modelId,
-        name: found.name || modelId,
-        context_window: found.limit?.context || 8192,
-        max_output_tokens: found.limit?.output || 4096,
-      };
-      updated++;
+      const nextMeta = buildModelMeta(modelId, found);
+      const previousMeta = existingMeta[modelId];
+      const changed =
+        !previousMeta ||
+        JSON.stringify(previousMeta) !== JSON.stringify(nextMeta);
+
+      existingMeta[modelId] = nextMeta;
+      if (changed) {
+        updated++;
+      } else {
+        skipped++;
+      }
       console.log(`[Sync] ✓ ${modelId}  ←  ${found.id}`);
     } else {
       notFound++;
@@ -152,7 +185,7 @@ async function main() {
   // ------------------------------------------------------------------
   // Write back
   // ------------------------------------------------------------------
-  await Bun.write("./models-meta.json", JSON.stringify(existingMeta, null, 2));
+  await Bun.write("./models-meta.json", `${JSON.stringify(existingMeta, null, 2)}\n`);
   console.log("[Sync] Written to models-meta.json");
 }
 

@@ -23,6 +23,10 @@ export interface ModelMeta {
   name: string;
   context_window: number;
   max_output_tokens: number;
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
 }
 
 export interface ProviderModel {

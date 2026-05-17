@@ -8,7 +8,9 @@
     "packages/*"
   ],
   "dependencies": {
-    "@mini-ai-gateway/core": "workspace:*"
+    "@mini-ai-gateway/core": "workspace:*",
+    "skills": "^1.5.7",
+    "skills-npm": "^1.1.1"
   },
   "devDependencies": {
     "@inquirer/prompts": "^7",
@@ -18,6 +20,7 @@
     "typescript": "^5"
   },
   "scripts": {
+    "prepare": "bun run scripts/prepare.ts",
     "start": "bun run index.ts",
     "dev": "bun --hot index.ts",
     "dev:admin": "bun --filter @mini-ai-gateway/admin dev",

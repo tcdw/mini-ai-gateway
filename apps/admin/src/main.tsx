@@ -684,10 +684,12 @@ function ClientConfigPage() {
   }, [form, query.data?.models]);
 
   React.useEffect(() => {
-    const baseUrl =
-      kind === "claude-code" || kind === "gemini-cli"
-        ? window.location.origin
-        : `${window.location.origin}/v1`;
+    let baseUrl = `${window.location.origin}/v1`;
+    if (kind === "claude-code") {
+      baseUrl = `${window.location.origin}/anthropic`;
+    } else if (kind === "gemini-cli") {
+      baseUrl = window.location.origin;
+    }
     form.setFieldValue("baseUrl", baseUrl);
   }, [kind, form]);
 

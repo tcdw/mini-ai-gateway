@@ -49,3 +49,14 @@ test("opencode config declares all configured models with modalities metadata", 
     output: ["text"],
   });
 });
+
+test("claude-code config uses anthropic protocol alias root", () => {
+  const text = generateClientConfig("claude-code", {
+    baseUrl: "http://localhost:3000/v1",
+    apiKeyEnvVar: "GATEWAY_API_KEY",
+    defaultModel: "anthropic/claude-opus-4.7",
+  });
+
+  expect(text).toContain('ANTHROPIC_BASE_URL="http://localhost:3000/anthropic"');
+  expect(text).toContain('ANTHROPIC_MODEL="anthropic/claude-opus-4.7"');
+});

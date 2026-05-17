@@ -24,6 +24,11 @@ function rootBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
 }
 
+function anthropicRootBaseUrl(baseUrl: string): string {
+  const root = rootBaseUrl(baseUrl);
+  return root.endsWith("/anthropic") ? root : `${root}/anthropic`;
+}
+
 export function generateClientConfig(
   kind: ClientConfigKind,
   options: ClientConfigOptions,
@@ -81,10 +86,10 @@ export function generateClientConfig(
   }
 
   if (kind === "claude-code") {
-    const root = rootBaseUrl(options.baseUrl);
+    const root = anthropicRootBaseUrl(options.baseUrl);
     return [
       `# Claude Code → Mini AI Gateway`,
-      `# Anthropic SDK expects the root URL (no /v1 suffix).`,
+      `# Anthropic SDK expects the protocol root URL (no /v1 suffix).`,
       `export ANTHROPIC_BASE_URL="${root}"`,
       `export ANTHROPIC_AUTH_TOKEN="$${apiKey}"`,
       `# Important: clear ANTHROPIC_API_KEY so Claude Code picks up AUTH_TOKEN.`,

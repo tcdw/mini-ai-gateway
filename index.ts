@@ -114,6 +114,44 @@ function getOpenAIModelsList() {
   return jsonResponse({ object: "list", data }, 200);
 }
 
+function buildAnthropicModelInfo(modelId: string) {
+  const meta = modelsMeta[modelId];
+  return {
+    id: modelId,
+    type: "model",
+    display_name: meta?.name ?? modelId,
+    ...(meta
+      ? {
+          max_input_tokens: meta.context_window,
+          max_tokens: meta.max_output_tokens,
+        }
+      : {}),
+  };
+}
+
+function getAnthropicModelsList() {
+  const data = Object.entries(cfg.models)
+    .filter(([, route]) => route.protocols.anthropic)
+    .map(([modelId]) => buildAnthropicModelInfo(modelId));
+  return jsonResponse(
+    {
+      data,
+      first_id: data[0]?.id ?? null,
+      has_more: false,
+      last_id: data.at(-1)?.id ?? null,
+    },
+    200,
+  );
+}
+
+function getAnthropicModel(modelId: string) {
+  const route = cfg.models[modelId];
+  if (!route?.protocols.anthropic) {
+    return protocolError("anthropic", `Model '${modelId}' not found`, 404);
+  }
+  return jsonResponse(buildAnthropicModelInfo(modelId), 200);
+}
+
 function getGeminiModelsList() {
   const models = Object.entries(cfg.models)
     .filter(([, route]) => route.protocols.gemini)
@@ -443,6 +481,32 @@ async function readJsonBody(
   }
 }
 
+function stripAnthropicAliasPath(pathname: string): string | null {
+  if (pathname === "/anthropic") return "/";
+  if (!pathname.startsWith("/anthropic/")) return null;
+  return pathname.slice("/anthropic".length);
+}
+
+function wantsAnthropicModels(req: Request): boolean {
+  return (
+    req.headers.has("anthropic-version") ||
+    req.headers.has("anthropic-beta") ||
+    req.headers.get("x-gateway-protocol") === "anthropic"
+  );
+}
+
+function inferProtocolFromPath(pathname: string): Protocol {
+  if (pathname.startsWith("/v1beta")) return "gemini";
+  if (
+    pathname === "/anthropic" ||
+    pathname.startsWith("/anthropic/") ||
+    pathname.startsWith("/v1/messages")
+  ) {
+    return "anthropic";
+  }
+  return "openai";
+}
+
 // ---------------------------------------------------------------------------
 // Admin API
 // ---------------------------------------------------------------------------
@@ -646,7 +710,13 @@ Bun.serve({
           };
 
           const kind = body.kind ?? "opencode";
-          const baseUrl = body.baseUrl ?? `http://localhost:${PORT}/v1`;
+          const defaultBaseUrl =
+            kind === "claude-code"
+              ? `http://localhost:${PORT}/anthropic`
+              : kind === "gemini-cli"
+                ? `http://localhost:${PORT}`
+                : `http://localhost:${PORT}/v1`;
+          const baseUrl = body.baseUrl ?? defaultBaseUrl;
           const text = generateClientConfig(kind, {
             baseUrl,
             apiKeyEnvVar: body.apiKeyEnvVar,
@@ -663,6 +733,7 @@ Bun.serve({
   async fetch(req) {
     const start = performance.now();
     const url = new URL(req.url);
+    const anthropicAliasPath = stripAnthropicAliasPath(url.pathname);
 
     if (url.pathname === "/favicon.ico") {
       return new Response(null, { status: 204 });
@@ -682,15 +753,39 @@ Bun.serve({
 
     let res: Response;
     if (presentedKey !== GATEWAY_KEY) {
-      // For Anthropic / Gemini paths, surface dialect-appropriate auth errors
-      const proto: Protocol = url.pathname.startsWith("/v1beta")
-        ? "gemini"
-        : url.pathname.startsWith("/v1/messages")
-          ? "anthropic"
-          : "openai";
-      res = protocolError(proto, "Invalid API key", 401);
+      res = protocolError(
+        inferProtocolFromPath(url.pathname),
+        "Invalid API key",
+        401,
+      );
+    } else if (anthropicAliasPath !== null) {
+      if (anthropicAliasPath === "/v1/models" && req.method === "GET") {
+        res = getAnthropicModelsList();
+      } else if (
+        anthropicAliasPath.startsWith("/v1/models/") &&
+        req.method === "GET"
+      ) {
+        const modelId = decodeURIComponent(
+          anthropicAliasPath.slice("/v1/models/".length),
+        );
+        res = getAnthropicModel(modelId);
+      } else if (
+        anthropicAliasPath === "/v1/messages" &&
+        req.method === "POST"
+      ) {
+        res = await handleAnthropicMessages(req, url, "messages");
+      } else if (
+        anthropicAliasPath === "/v1/messages/count_tokens" &&
+        req.method === "POST"
+      ) {
+        res = await handleAnthropicMessages(req, url, "messages/count_tokens");
+      } else {
+        res = protocolError("anthropic", "Not found", 404);
+      }
     } else if (url.pathname === "/v1/models" && req.method === "GET") {
-      res = getOpenAIModelsList();
+      res = wantsAnthropicModels(req)
+        ? getAnthropicModelsList()
+        : getOpenAIModelsList();
     } else if (
       url.pathname === "/v1/chat/completions" &&
       req.method === "POST"
@@ -717,12 +812,11 @@ Bun.serve({
       const modelAction = url.pathname.slice("/v1beta/models/".length);
       res = await handleGeminiGenerate(req, url, modelAction);
     } else {
-      const proto: Protocol = url.pathname.startsWith("/v1beta")
-        ? "gemini"
-        : url.pathname.startsWith("/v1/messages")
-          ? "anthropic"
-          : "openai";
-      res = protocolError(proto, "Not found", 404);
+      res = protocolError(
+        inferProtocolFromPath(url.pathname),
+        "Not found",
+        404,
+      );
     }
 
     const elapsed = performance.now() - start;

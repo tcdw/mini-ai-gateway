@@ -1,7 +1,14 @@
 import "antd/dist/reset.css";
 import "./style.css";
 
-import type { ClientConfigKind, ProviderModel } from "@mini-ai-gateway/core";
+import type {
+  AdminConfigSnapshot,
+  AdminProvider,
+  AdminModelRoute,
+  ClientConfigKind,
+  Protocol,
+  ProviderModel,
+} from "@mini-ai-gateway/core";
 import {
   createRootRoute,
   createRoute,
@@ -9,7 +16,13 @@ import {
   Link,
   RouterProvider,
 } from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   App,
   Button,
@@ -18,6 +31,8 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
+  Segmented,
   Select,
   Space,
   Statistic,
@@ -32,13 +47,28 @@ import {
   addMapping,
   generateClientConfig,
   getConfig,
+  removeMapping,
+  removeProviderEndpoint,
   reorderProviders,
   scanProviderModels,
+  upsertProviderEndpoint,
 } from "./api/client";
 import { AppShell } from "./components/AppShell";
 import { useAdminStore } from "./stores/admin-store";
 
 const queryClient = new QueryClient();
+
+const PROTOCOLS = ["openai", "anthropic", "gemini"] as const satisfies readonly Protocol[];
+const PROTOCOL_LABELS: Record<Protocol, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  gemini: "Gemini",
+};
+const PROTOCOL_COLORS: Record<Protocol, string> = {
+  openai: "geekblue",
+  anthropic: "purple",
+  gemini: "magenta",
+};
 
 function useGatewayConfig() {
   const gatewayApiKey = useAdminStore((store) => store.gatewayApiKey);
@@ -62,6 +92,27 @@ function getModelShortName(modelId: string) {
   return modelId.includes("/") ? modelId.split("/").pop()! : modelId;
 }
 
+function flattenProviders(route: AdminModelRoute): {
+  protocol: Protocol;
+  index: number;
+  name: string;
+  remap: string;
+}[] {
+  const rows: {
+    protocol: Protocol;
+    index: number;
+    name: string;
+    remap: string;
+  }[] = [];
+  for (const protocol of PROTOCOLS) {
+    const providers = route.protocols[protocol]?.providers ?? [];
+    providers.forEach((provider, index) => {
+      rows.push({ protocol, index, name: provider.name, remap: provider.remap });
+    });
+  }
+  return rows;
+}
+
 function ModelsPage() {
   const { message } = App.useApp();
   const query = useGatewayConfig();
@@ -74,50 +125,85 @@ function ModelsPage() {
     },
     onError: (error) => message.error(error.message),
   });
+  const remove = useMutation({
+    mutationFn: removeMapping,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["gateway-config"], data);
+      message.success("Mapping removed");
+    },
+    onError: (error) => message.error(error.message),
+  });
 
-  const columns: ColumnsType<NonNullable<typeof query.data>["models"][number]> = [
+  const columns: ColumnsType<AdminModelRoute> = [
     {
       title: "Model",
       dataIndex: "id",
+      width: 280,
+      fixed: "left",
       render: (id: string) => <Typography.Text copyable>{id}</Typography.Text>,
     },
-    {
-      title: "Providers",
-      render: (_, record) => (
-        <Space wrap>
-          {record.providers.map((provider, index) => (
-            <Tag key={provider.name} color={index === 0 ? "blue" : "default"}>
-              {index + 1}. {provider.name} → {provider.remap}
-            </Tag>
-          ))}
-        </Space>
-      ),
-    },
+    ...PROTOCOLS.map<ColumnsType<AdminModelRoute>[number]>((protocol) => ({
+      title: PROTOCOL_LABELS[protocol],
+      dataIndex: ["protocols", protocol],
+      render: (_, record) => {
+        const providers = record.protocols[protocol]?.providers ?? [];
+        if (providers.length === 0) {
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        }
+        return (
+          <Space direction="vertical" size={4} className="protocol-cell">
+            <Space wrap size={4}>
+              {providers.map((provider, index) => (
+                <Tag
+                  key={`${protocol}-${provider.name}`}
+                  color={index === 0 ? PROTOCOL_COLORS[protocol] : "default"}
+                  closable
+                  onClose={(e) => {
+                    e.preventDefault();
+                    remove.mutate({
+                      modelId: record.id,
+                      protocol,
+                      provider: provider.name,
+                    });
+                  }}
+                >
+                  {index + 1}. {provider.name} → {provider.remap}
+                </Tag>
+              ))}
+            </Space>
+            {providers.length > 1 ? (
+              <Select
+                size="small"
+                mode="multiple"
+                value={providers.map((provider) => provider.name)}
+                className="priority-select"
+                onChange={(next) =>
+                  reorder.mutate({
+                    modelId: record.id,
+                    protocol,
+                    providers: next,
+                  })
+                }
+                options={providers.map((provider) => ({
+                  label: provider.name,
+                  value: provider.name,
+                }))}
+              />
+            ) : null}
+          </Space>
+        );
+      },
+    })),
     {
       title: "Context",
-      width: 120,
-      render: (_, record) => record.contextWindow ? `${Math.round(record.contextWindow / 1000)}k` : "-",
+      width: 100,
+      render: (_, record) =>
+        record.contextWindow ? `${Math.round(record.contextWindow / 1000)}k` : "-",
     },
     {
       title: "Output",
-      width: 120,
+      width: 100,
       render: (_, record) => record.maxOutputTokens ?? "-",
-    },
-    {
-      title: "Priority",
-      width: 260,
-      render: (_, record) => (
-        <Select
-          mode="multiple"
-          value={record.providers.map((provider) => provider.name)}
-          className="priority-select"
-          onChange={(providers) => reorder.mutate({ modelId: record.id, providers })}
-          options={record.providers.map((provider) => ({
-            label: provider.name,
-            value: provider.name,
-          }))}
-        />
-      ),
     },
   ];
 
@@ -126,7 +212,9 @@ function ModelsPage() {
       <div className="page-heading">
         <div>
           <Typography.Title level={2}>Models</Typography.Title>
-          <Typography.Text type="secondary">Virtual model routing and fallback priority</Typography.Text>
+          <Typography.Text type="secondary">
+            Virtual model routing per protocol — first provider wins, fallback on 429/5xx
+          </Typography.Text>
         </div>
         <Button type="primary">
           <Link to="/providers">Scan Provider</Link>
@@ -137,10 +225,18 @@ function ModelsPage() {
         loading={query.isLoading}
         columns={columns}
         dataSource={query.data?.models ?? []}
+        scroll={{ x: 1200 }}
         pagination={{ pageSize: 12 }}
       />
     </section>
   );
+}
+
+interface EndpointModalState {
+  provider: string;
+  protocol: Protocol;
+  baseUrl: string;
+  authHeader: string;
 }
 
 function ProvidersPage() {
@@ -148,11 +244,18 @@ function ProvidersPage() {
   const query = useGatewayConfig();
   const queryClient = useQueryClient();
   const [selectedProvider, setSelectedProvider] = React.useState("");
+  const [scanProtocol, setScanProtocol] = React.useState<Protocol>("openai");
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | ScanStatus>("all");
-  const [pendingModel, setPendingModel] = React.useState<ScanResultRow | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<"all" | ScanStatus>(
+    "all",
+  );
+  const [pendingModel, setPendingModel] = React.useState<ScanResultRow | null>(
+    null,
+  );
   const [targetModelId, setTargetModelId] = React.useState("");
   const [addingModelId, setAddingModelId] = React.useState("");
+  const [endpointModal, setEndpointModal] =
+    React.useState<EndpointModalState | null>(null);
 
   const scan = useMutation({
     mutationFn: scanProviderModels,
@@ -171,7 +274,7 @@ function ProvidersPage() {
       queryClient.setQueryData(["gateway-config"], data);
       setPendingModel(null);
       setAddingModelId("");
-      message.success("Mappings added");
+      message.success("Mapping added");
     },
     onError: (error) => {
       setAddingModelId("");
@@ -179,32 +282,56 @@ function ProvidersPage() {
     },
   });
 
+  const upsertEndpoint = useMutation({
+    mutationFn: upsertProviderEndpoint,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["gateway-config"], data);
+      setEndpointModal(null);
+      message.success("Endpoint saved");
+    },
+    onError: (error) => message.error(error.message),
+  });
+
+  const deleteEndpoint = useMutation({
+    mutationFn: removeProviderEndpoint,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["gateway-config"], data);
+      message.success("Endpoint removed");
+    },
+    onError: (error) => message.error(error.message),
+  });
+
+  const providers = query.data?.providers ?? [];
+  const models = query.data?.models ?? [];
+
   const scannedModels = React.useMemo(
     () => [...(scan.data?.data ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
-    [scan.data?.data]
+    [scan.data?.data],
   );
 
   const scannedRows = React.useMemo<ScanResultRow[]>(() => {
-    const configuredModels = query.data?.models ?? [];
-
     return scannedModels.map((model) => {
       const shortName = getModelShortName(model.id);
-      const targetCandidates = configuredModels
+      const targetCandidates = models
         .filter((configured) => {
-          const hasSelectedProvider = configured.providers.some(
-            (provider) => provider.name === selectedProvider
+          const protoRoute = configured.protocols[scanProtocol];
+          const hasSelectedProvider = protoRoute?.providers.some(
+            (provider) => provider.name === selectedProvider,
           );
           return (
             !hasSelectedProvider &&
-            (configured.id === model.id || getModelShortName(configured.id) === shortName)
+            (configured.id === model.id ||
+              getModelShortName(configured.id) === shortName)
           );
         })
         .map((configured) => configured.id);
 
-      const alreadyConfigured = configuredModels.some(
+      const alreadyConfigured = models.some(
         (configured) =>
           configured.id === model.id &&
-          configured.providers.some((provider) => provider.name === selectedProvider)
+          (configured.protocols[scanProtocol]?.providers ?? []).some(
+            (provider) => provider.name === selectedProvider,
+          ),
       );
 
       return {
@@ -217,7 +344,7 @@ function ProvidersPage() {
             : "new",
       };
     });
-  }, [query.data?.models, scannedModels, selectedProvider]);
+  }, [models, scannedModels, selectedProvider, scanProtocol]);
 
   const filteredRows = React.useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -236,6 +363,7 @@ function ProvidersPage() {
     add.mutate({
       targetModelId: targetId,
       provider: selectedProvider,
+      protocol: scanProtocol,
       remap: row.id,
     });
   }
@@ -293,56 +421,131 @@ function ProvidersPage() {
     },
   ];
 
+  const providerProtocolColumns: ColumnsType<AdminProvider> = [
+    {
+      title: "Provider",
+      dataIndex: "name",
+      width: 160,
+      fixed: "left",
+      render: (name: string) => <Typography.Text strong>{name}</Typography.Text>,
+    },
+    {
+      title: "API Key Env",
+      width: 200,
+      render: (_, record) => (
+        <Tag color={record.hasApiKey ? "green" : "orange"}>
+          {record.keyEnvVar}
+        </Tag>
+      ),
+    },
+    ...PROTOCOLS.map<ColumnsType<AdminProvider>[number]>((protocol) => ({
+      title: PROTOCOL_LABELS[protocol],
+      width: 280,
+      render: (_, record) => {
+        const endpoint = record.endpoints[protocol];
+        if (!endpoint) {
+          return (
+            <Button
+              size="small"
+              type="dashed"
+              onClick={() =>
+                setEndpointModal({
+                  provider: record.name,
+                  protocol,
+                  baseUrl: "",
+                  authHeader: "",
+                })
+              }
+            >
+              + Configure
+            </Button>
+          );
+        }
+        return (
+          <Space direction="vertical" size={4} className="full-width">
+            <Typography.Text className="endpoint-url" copyable>
+              {endpoint.baseUrl}
+            </Typography.Text>
+            {endpoint.authHeader ? (
+              <Tag color="default">auth: {endpoint.authHeader}</Tag>
+            ) : null}
+            <Space size={6}>
+              <Button
+                size="small"
+                onClick={() =>
+                  setEndpointModal({
+                    provider: record.name,
+                    protocol,
+                    baseUrl: endpoint.baseUrl,
+                    authHeader: endpoint.authHeader ?? "",
+                  })
+                }
+              >
+                Edit
+              </Button>
+              <Popconfirm
+                title={`Remove ${PROTOCOL_LABELS[protocol]} endpoint?`}
+                onConfirm={() =>
+                  deleteEndpoint.mutate({
+                    provider: record.name,
+                    protocol,
+                  })
+                }
+              >
+                <Button size="small" danger>
+                  Remove
+                </Button>
+              </Popconfirm>
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => {
+                  setSelectedProvider(record.name);
+                  setScanProtocol(protocol);
+                  scan.mutate({ provider: record.name, protocol });
+                }}
+              >
+                Scan
+              </Button>
+            </Space>
+          </Space>
+        );
+      },
+    })),
+  ];
+
   return (
     <section className="page-stack">
       <div className="page-heading">
         <div>
           <Typography.Title level={2}>Providers</Typography.Title>
-          <Typography.Text type="secondary">Scan upstream models and append mappings</Typography.Text>
+          <Typography.Text type="secondary">
+            Support matrix and upstream scans — one provider can speak multiple protocols
+          </Typography.Text>
         </div>
       </div>
 
       <div className="stats-row">
-        <Statistic title="Providers" value={query.data?.providers.length ?? 0} />
-        <Statistic title="Configured Models" value={query.data?.models.length ?? 0} />
+        <Statistic title="Providers" value={providers.length} />
+        <Statistic title="Configured Models" value={models.length} />
         <Statistic title="Scanned Models" value={scannedModels.length} />
       </div>
 
-      <Table
-        rowKey="name"
-        loading={query.isLoading}
-        dataSource={query.data?.providers ?? []}
-        pagination={false}
-        columns={[
-          { title: "Name", dataIndex: "name" },
-          { title: "Base URL", dataIndex: "baseUrl" },
-          { title: "Auth", dataIndex: "authHeader", width: 100 },
-          {
-            title: "API Key",
-            width: 180,
-            render: (_, record) => (
-              <Tag color={record.hasApiKey ? "green" : "orange"}>{record.keyEnvVar}</Tag>
-            ),
-          },
-          {
-            title: "Action",
-            width: 140,
-            render: (_, record) => (
-              <Button
-                onClick={() => {
-                  setSelectedProvider(record.name);
-                  scan.mutate(record.name);
-                }}
-              >
-                Scan
-              </Button>
-            ),
-          },
-        ]}
-      />
+      <Card title="Support matrix" size="small">
+        <Table
+          rowKey="name"
+          loading={query.isLoading}
+          dataSource={providers}
+          pagination={false}
+          columns={providerProtocolColumns}
+          scroll={{ x: 1100 }}
+        />
+      </Card>
 
       {selectedProvider ? (
-        <Card title={`Scan result: ${selectedProvider}`}>
+        <Card
+          title={`Scan: ${selectedProvider} (${PROTOCOL_LABELS[scanProtocol]})`}
+        >
           {scannedModels.length === 0 ? (
             <Empty />
           ) : (
@@ -402,6 +605,61 @@ function ProvidersPage() {
           />
         </Space>
       </Modal>
+
+      <Modal
+        title={
+          endpointModal
+            ? `${endpointModal.provider} → ${PROTOCOL_LABELS[endpointModal.protocol]} endpoint`
+            : ""
+        }
+        open={Boolean(endpointModal)}
+        confirmLoading={upsertEndpoint.isPending}
+        onCancel={() => setEndpointModal(null)}
+        onOk={() => {
+          if (!endpointModal) return;
+          if (!endpointModal.baseUrl.trim()) return;
+          upsertEndpoint.mutate({
+            provider: endpointModal.provider,
+            protocol: endpointModal.protocol,
+            endpoint: {
+              baseUrl: endpointModal.baseUrl.trim(),
+              ...(endpointModal.authHeader.trim()
+                ? { authHeader: endpointModal.authHeader.trim() }
+                : {}),
+            },
+          });
+        }}
+      >
+        <Space direction="vertical" className="full-width">
+          <Form layout="vertical">
+            <Form.Item label="Base URL" required>
+              <Input
+                value={endpointModal?.baseUrl ?? ""}
+                onChange={(event) =>
+                  setEndpointModal((prev) =>
+                    prev ? { ...prev, baseUrl: event.target.value } : prev,
+                  )
+                }
+                placeholder="https://example.com/v1"
+              />
+            </Form.Item>
+            <Form.Item
+              label="Auth header (optional)"
+              tooltip="Leave blank to use the protocol default (Bearer for OpenAI/Anthropic, x-goog-api-key for Gemini). Use 'x-api-key' for Anthropic native, 'x-goog-api-key' for Gemini."
+            >
+              <Input
+                value={endpointModal?.authHeader ?? ""}
+                onChange={(event) =>
+                  setEndpointModal((prev) =>
+                    prev ? { ...prev, authHeader: event.target.value } : prev,
+                  )
+                }
+                placeholder="Bearer | x-api-key | x-goog-api-key"
+              />
+            </Form.Item>
+          </Form>
+        </Space>
+      </Modal>
     </section>
   );
 }
@@ -411,6 +669,7 @@ function ClientConfigPage() {
   const query = useGatewayConfig();
   const [form] = Form.useForm();
   const [text, setText] = React.useState("");
+  const [kind, setKind] = React.useState<ClientConfigKind>("opencode");
   const generate = useMutation({
     mutationFn: generateClientConfig,
     onSuccess: (data) => setText(data.text),
@@ -423,6 +682,14 @@ function ClientConfigPage() {
       form.setFieldValue("defaultModel", defaultModel);
     }
   }, [form, query.data?.models]);
+
+  React.useEffect(() => {
+    const baseUrl =
+      kind === "claude-code" || kind === "gemini-cli"
+        ? window.location.origin
+        : `${window.location.origin}/v1`;
+    form.setFieldValue("baseUrl", baseUrl);
+  }, [kind, form]);
 
   return (
     <section className="page-stack">
@@ -443,6 +710,9 @@ function ClientConfigPage() {
           apiKeyEnvVar: "GATEWAY_API_KEY",
           defaultModel: query.data?.models[0]?.id,
         }}
+        onValuesChange={(changed) => {
+          if (changed.kind) setKind(changed.kind as ClientConfigKind);
+        }}
         onFinish={(values) => generate.mutate(values)}
       >
         <Form.Item label="Client" name="kind">
@@ -450,6 +720,8 @@ function ClientConfigPage() {
             options={[
               { label: "opencode", value: "opencode" },
               { label: "OpenAI SDK", value: "openai-sdk" },
+              { label: "Claude Code (Anthropic)", value: "claude-code" },
+              { label: "Gemini CLI / @google/genai", value: "gemini-cli" },
               { label: "curl", value: "curl" },
             ]}
           />

@@ -138,13 +138,18 @@ async function main() {
       lookupIds.push(shortName);
     }
 
-    for (const p of route.providers) {
-      if (p.remap && !lookupIds.includes(p.remap)) {
-        lookupIds.push(p.remap);
-      }
-      const remapShort = p.remap?.includes("/") ? p.remap.split("/").pop()! : p.remap;
-      if (remapShort && !lookupIds.includes(remapShort)) {
-        lookupIds.push(remapShort);
+    for (const protoRoute of Object.values(route.protocols)) {
+      if (!protoRoute) continue;
+      for (const p of protoRoute.providers) {
+        if (p.remap && !lookupIds.includes(p.remap)) {
+          lookupIds.push(p.remap);
+        }
+        const remapShort = p.remap?.includes("/")
+          ? p.remap.split("/").pop()!
+          : p.remap;
+        if (remapShort && !lookupIds.includes(remapShort)) {
+          lookupIds.push(remapShort);
+        }
       }
     }
 

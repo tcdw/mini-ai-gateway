@@ -1,7 +1,29 @@
-export interface ProviderConfig {
+export type Protocol = "openai" | "anthropic" | "gemini";
+
+export const PROTOCOLS: readonly Protocol[] = [
+  "openai",
+  "anthropic",
+  "gemini",
+] as const;
+
+export interface ProtocolEndpoint {
   baseUrl: string;
-  authHeader: string;
+  /**
+   * Optional override for the auth header name / prefix.
+   * - "Authorization" or "Bearer" → "Authorization: Bearer <key>"
+   * - "x-api-key" → "x-api-key: <key>"  (Anthropic native)
+   * - "x-goog-api-key" → "x-goog-api-key: <key>"  (Gemini)
+   * If omitted, defaults per protocol:
+   *   openai     → "Bearer"
+   *   anthropic  → "Bearer"
+   *   gemini     → "x-goog-api-key"
+   */
+  authHeader?: string;
+}
+
+export interface ProviderConfig {
   keyEnvVar: string;
+  endpoints: Partial<Record<Protocol, ProtocolEndpoint>>;
 }
 
 export interface ModelProvider {
@@ -9,8 +31,12 @@ export interface ModelProvider {
   remap: string;
 }
 
-export interface ModelRoute {
+export interface ProtocolRoute {
   providers: ModelProvider[];
+}
+
+export interface ModelRoute {
+  protocols: Partial<Record<Protocol, ProtocolRoute>>;
 }
 
 export interface AppConfig {
@@ -38,19 +64,27 @@ export interface ModelsListResponse {
   data: ProviderModel[];
 }
 
-export interface AdminModelRoute {
-  id: string;
-  providers: ModelProvider[];
-  contextWindow?: number;
-  maxOutputTokens?: number;
+export interface AdminProtocolEndpoint {
+  baseUrl: string;
+  authHeader?: string;
 }
 
 export interface AdminProvider {
   name: string;
-  baseUrl: string;
-  authHeader: string;
   keyEnvVar: string;
   hasApiKey: boolean;
+  endpoints: Partial<Record<Protocol, AdminProtocolEndpoint>>;
+}
+
+export interface AdminProtocolRoute {
+  providers: ModelProvider[];
+}
+
+export interface AdminModelRoute {
+  id: string;
+  protocols: Partial<Record<Protocol, AdminProtocolRoute>>;
+  contextWindow?: number;
+  maxOutputTokens?: number;
 }
 
 export interface AdminConfigSnapshot {

@@ -1,6 +1,11 @@
 import type { AppConfig, ModelMeta } from "./types";
 
-export type ClientConfigKind = "opencode" | "openai-sdk" | "curl";
+export type ClientConfigKind =
+  | "opencode"
+  | "openai-sdk"
+  | "curl"
+  | "claude-code"
+  | "gemini-cli";
 
 export interface ClientConfigOptions {
   baseUrl: string;
@@ -14,9 +19,14 @@ export function pickDefaultModel(cfg: AppConfig): string {
   return Object.keys(cfg.models)[0] ?? "";
 }
 
+function rootBaseUrl(baseUrl: string): string {
+  // Strip a trailing `/v1` (Anthropic / Gemini SDKs expect the root)
+  return baseUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+}
+
 export function generateClientConfig(
   kind: ClientConfigKind,
-  options: ClientConfigOptions
+  options: ClientConfigOptions,
 ): string {
   const apiKey = options.apiKeyEnvVar || "GATEWAY_API_KEY";
   const model = options.defaultModel || "openai/gpt-5.5";
@@ -31,7 +41,7 @@ export function generateClientConfig(
           ...(meta?.modalities ? { modalities: meta.modalities } : {}),
         },
       ];
-    })
+    }),
   );
 
   if (kind === "opencode") {
@@ -50,7 +60,7 @@ export function generateClientConfig(
         model: `mini-ai-gateway/${model}`,
       },
       null,
-      2
+      2,
     );
   }
 
@@ -70,6 +80,44 @@ export function generateClientConfig(
     ].join("\n");
   }
 
+  if (kind === "claude-code") {
+    const root = rootBaseUrl(options.baseUrl);
+    return [
+      `# Claude Code → Mini AI Gateway`,
+      `# Anthropic SDK expects the root URL (no /v1 suffix).`,
+      `export ANTHROPIC_BASE_URL="${root}"`,
+      `export ANTHROPIC_AUTH_TOKEN="$${apiKey}"`,
+      `# Important: clear ANTHROPIC_API_KEY so Claude Code picks up AUTH_TOKEN.`,
+      `export ANTHROPIC_API_KEY=""`,
+      `export ANTHROPIC_MODEL="${model}"`,
+      "",
+      `# Then run:`,
+      `#   claude`,
+    ].join("\n");
+  }
+
+  if (kind === "gemini-cli") {
+    const root = rootBaseUrl(options.baseUrl);
+    return [
+      `# Gemini CLI / @google/genai SDK → Mini AI Gateway`,
+      `# Point the SDK base URL at the gateway root; auth is the gateway key.`,
+      `export GOOGLE_GEMINI_BASE_URL="${root}"`,
+      `export GEMINI_API_KEY="$${apiKey}"`,
+      "",
+      `# TypeScript:`,
+      `#   import { GoogleGenAI } from "@google/genai";`,
+      `#   const client = new GoogleGenAI({`,
+      `#     apiKey: process.env.GEMINI_API_KEY,`,
+      `#     httpOptions: { baseUrl: process.env.GOOGLE_GEMINI_BASE_URL },`,
+      `#   });`,
+      `#   const result = await client.models.generateContent({`,
+      `#     model: "${model}",`,
+      `#     contents: "Hello",`,
+      `#   });`,
+    ].join("\n");
+  }
+
+  // curl (default)
   return [
     `curl ${options.baseUrl}/chat/completions \\`,
     `  -H "Authorization: Bearer $${apiKey}" \\`,

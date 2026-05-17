@@ -2,28 +2,26 @@ import adminIndex from "./apps/admin/index.html";
 import {
   addModelMappings,
   addModelProviderMapping,
+  buildAuthHeaders,
+  buildProtocolErrorBody,
   generateClientConfig,
   pickDefaultModel,
   readGatewayConfig,
   readModelsMeta,
+  removeModelProviderMapping,
+  removeProviderEndpoint,
   reorderModelProviders,
   scanProviderModels,
   toAdminConfigSnapshot,
+  upsertProviderEndpoint,
   writeGatewayConfig,
 } from "@mini-ai-gateway/core";
-import type { AppConfig, ModelMeta } from "@mini-ai-gateway/core";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface OpenAIError {
-  error: {
-    message: string;
-    type: string;
-    code: string | null;
-  };
-}
+import type {
+  AppConfig,
+  ModelMeta,
+  Protocol,
+  ProtocolEndpoint,
+} from "@mini-ai-gateway/core";
 
 // ---------------------------------------------------------------------------
 // Configuration validation
@@ -69,61 +67,128 @@ let modelsMeta: Record<string, ModelMeta> = {};
 // Helpers
 // ---------------------------------------------------------------------------
 
-function jsonResponse(body: OpenAIError | object, status: number) {
+function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
 }
 
-function openAIError(
+function protocolError(
+  protocol: Protocol,
   message: string,
-  type: string,
-  code: string | null,
   status: number,
-) {
-  return jsonResponse({ error: { message, type, code } }, status);
+): Response {
+  return jsonResponse(
+    buildProtocolErrorBody(protocol, { message, status }),
+    status,
+  );
 }
 
 // HTTP statuses that indicate a transient / provider-side issue worth falling back
 const FALLBACK_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-function getModelsList() {
-  const data = Object.keys(cfg.models).map((modelId) => {
-    const meta = modelsMeta[modelId];
-    return {
-      id: modelId,
-      object: "model",
-      created: 1715368132,
-      owned_by: modelId.split("/")[0],
-      ...(meta
-        ? {
-            context_window: meta.context_window,
-            max_output_tokens: meta.max_output_tokens,
-            ...(meta.modalities ? { modalities: meta.modalities } : {}),
-          }
-        : {}),
-    };
-  });
+// ---------------------------------------------------------------------------
+// Model list endpoints
+// ---------------------------------------------------------------------------
+
+function getOpenAIModelsList() {
+  const data = Object.entries(cfg.models)
+    .filter(([, route]) => route.protocols.openai)
+    .map(([modelId]) => {
+      const meta = modelsMeta[modelId];
+      return {
+        id: modelId,
+        object: "model",
+        created: 1715368132,
+        owned_by: modelId.split("/")[0],
+        ...(meta
+          ? {
+              context_window: meta.context_window,
+              max_output_tokens: meta.max_output_tokens,
+              ...(meta.modalities ? { modalities: meta.modalities } : {}),
+            }
+          : {}),
+      };
+    });
   return jsonResponse({ object: "list", data }, 200);
 }
 
-async function forwardToUpstream(
-  modelName: string,
-  body: Record<string, unknown>,
-  upstreamPath: string,
-): Promise<Response> {
+function getGeminiModelsList() {
+  const models = Object.entries(cfg.models)
+    .filter(([, route]) => route.protocols.gemini)
+    .map(([modelId]) => {
+      const meta = modelsMeta[modelId];
+      return {
+        name: `models/${modelId}`,
+        baseModelId: modelId,
+        version: "001",
+        displayName: meta?.name ?? modelId,
+        supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
+        ...(meta
+          ? {
+              inputTokenLimit: meta.context_window,
+              outputTokenLimit: meta.max_output_tokens,
+            }
+          : {}),
+      };
+    });
+  return jsonResponse({ models }, 200);
+}
+
+// ---------------------------------------------------------------------------
+// Generic protocol-aware forwarder
+// ---------------------------------------------------------------------------
+
+interface ForwardOptions {
+  protocol: Protocol;
+  modelName: string;
+  method: "GET" | "POST";
+  /** Headers from the inbound client request that should be forwarded. */
+  forwardHeaders?: Headers;
+  /** Raw body (JSON object) — for POSTs that should be re-serialized after remap */
+  body?: Record<string, unknown>;
+  /**
+   * Build the upstream path (relative, no leading slash) given the endpoint
+   * and the upstream model name (`remap`). Receives the raw inbound URL so
+   * Gemini can preserve `?alt=sse` and other query params.
+   */
+  buildUpstreamPath: (args: {
+    endpoint: ProtocolEndpoint;
+    remap: string;
+    inboundUrl: URL;
+  }) => string;
+  /**
+   * Optionally transform the JSON body before sending upstream. Default
+   * behavior for openai/anthropic is to set `body.model = remap`. Gemini
+   * keeps the body verbatim since the model is in the URL path.
+   */
+  transformBody?: (body: Record<string, unknown>, remap: string) => unknown;
+  /** Inbound request URL, used by buildUpstreamPath. */
+  inboundUrl: URL;
+}
+
+async function forwardToUpstream(opts: ForwardOptions): Promise<Response> {
+  const { protocol, modelName, method, body, inboundUrl } = opts;
   const route = cfg.models[modelName];
   if (!route) {
-    return openAIError(
+    return protocolError(
+      protocol,
       `Model '${modelName}' not found`,
-      "model_not_found",
-      null,
       404,
     );
   }
 
-  let candidates = [...route.providers];
+  const protoRoute = route.protocols[protocol];
+  if (!protoRoute || protoRoute.providers.length === 0) {
+    return protocolError(
+      protocol,
+      `Model '${modelName}' is not exposed via ${protocol} protocol`,
+      404,
+    );
+  }
+
+  let candidates = [...protoRoute.providers];
   let lastErrorResponse: Response | null = null;
 
   while (candidates.length > 0) {
@@ -138,6 +203,15 @@ async function forwardToUpstream(
       continue;
     }
 
+    const endpoint = providerCfg.endpoints[protocol];
+    if (!endpoint) {
+      console.warn(
+        `[Gateway] Provider "${selected.name}" has no ${protocol} endpoint — skipped`,
+      );
+      candidates = candidates.filter((p) => p.name !== selected.name);
+      continue;
+    }
+
     const apiKey = process.env[providerCfg.keyEnvVar];
     if (!apiKey) {
       console.warn(
@@ -147,44 +221,70 @@ async function forwardToUpstream(
       continue;
     }
 
-    const upstreamBody = { ...body, model: selected.remap };
+    const upstreamPath = opts.buildUpstreamPath({
+      endpoint,
+      remap: selected.remap,
+      inboundUrl,
+    });
+    const upstreamUrl = `${endpoint.baseUrl.replace(/\/+$/, "")}/${upstreamPath.replace(/^\/+/, "")}`;
+
+    const headers: Record<string, string> = {
+      ...buildAuthHeaders(endpoint, protocol, apiKey),
+    };
+    if (method === "POST") {
+      headers["Content-Type"] = "application/json";
+    }
+    // For Anthropic protocol, propagate the inbound `anthropic-version` header
+    // (or set a sensible default) so upstreams that require it succeed.
+    if (protocol === "anthropic") {
+      const version =
+        opts.forwardHeaders?.get("anthropic-version") ?? "2023-06-01";
+      headers["anthropic-version"] = version;
+      const beta = opts.forwardHeaders?.get("anthropic-beta");
+      if (beta) headers["anthropic-beta"] = beta;
+    }
+
+    let serializedBody: string | undefined;
+    if (method === "POST") {
+      const sourceBody = body ?? {};
+      const transformed = opts.transformBody
+        ? opts.transformBody(sourceBody, selected.remap)
+        : { ...sourceBody, model: selected.remap };
+      serializedBody = JSON.stringify(transformed);
+    }
 
     try {
-      const upstream = await fetch(`${providerCfg.baseUrl}/${upstreamPath}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `${providerCfg.authHeader} ${apiKey}`,
-        },
-        body: JSON.stringify(upstreamBody),
+      const upstream = await fetch(upstreamUrl, {
+        method,
+        headers,
+        body: serializedBody,
       });
 
       if (upstream.ok) {
         console.log(
-          `[Gateway] → ${selected.name} (${modelName}) — ${upstream.status}`,
+          `[Gateway] → ${protocol}:${selected.name} (${modelName}) — ${upstream.status}`,
         );
-        return upstream;
+        return passThroughResponse(upstream);
       }
 
       if (FALLBACK_STATUSES.has(upstream.status)) {
         console.warn(
           `[Fallback] Provider "${selected.name}" returned ${upstream.status}, shifting...`,
         );
-        lastErrorResponse = upstream;
+        lastErrorResponse = passThroughResponse(upstream);
         candidates = candidates.filter((p) => p.name !== selected.name);
         continue;
       }
 
-      return upstream;
+      return passThroughResponse(upstream);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(
         `[Fallback] Provider "${selected.name}" unreachable: ${message}`,
       );
-      lastErrorResponse = openAIError(
+      lastErrorResponse = protocolError(
+        protocol,
         `Upstream unreachable: ${message}`,
-        "upstream_error",
-        null,
         502,
       );
       candidates = candidates.filter((p) => p.name !== selected.name);
@@ -193,51 +293,161 @@ async function forwardToUpstream(
 
   if (lastErrorResponse) return lastErrorResponse;
 
-  return openAIError(
+  return protocolError(
+    protocol,
     `No available providers for model '${modelName}'`,
-    "upstream_error",
-    null,
     502,
   );
 }
 
-async function handleChatCompletion(req: Request): Promise<Response> {
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return openAIError("Invalid JSON body", "invalid_request_error", null, 400);
-  }
-
-  const modelName = body.model;
-  if (typeof modelName !== "string" || !modelName) {
-    return openAIError("model is required", "invalid_request_error", null, 400);
-  }
-
-  return forwardToUpstream(modelName, body, "chat/completions");
+/**
+ * Pass the upstream Response through unchanged. We avoid buffering the body
+ * so streaming responses (SSE) remain low-latency.
+ */
+function passThroughResponse(upstream: Response): Response {
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: upstream.headers,
+  });
 }
 
-async function handleImageGeneration(req: Request): Promise<Response> {
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return openAIError("Invalid JSON body", "invalid_request_error", null, 400);
-  }
+// ---------------------------------------------------------------------------
+// Protocol-specific handlers
+// ---------------------------------------------------------------------------
+
+async function handleOpenAIChatCompletion(
+  req: Request,
+  inboundUrl: URL,
+): Promise<Response> {
+  const body = await readJsonBody(req, "openai");
+  if (body instanceof Response) return body;
 
   const modelName = body.model;
   if (typeof modelName !== "string" || !modelName) {
-    return openAIError("model is required", "invalid_request_error", null, 400);
+    return protocolError("openai", "model is required", 400);
   }
 
-  return forwardToUpstream(modelName, body, "images/generations");
+  return forwardToUpstream({
+    protocol: "openai",
+    modelName,
+    method: "POST",
+    body,
+    inboundUrl,
+    buildUpstreamPath: () => "chat/completions",
+  });
+}
+
+async function handleOpenAIImageGeneration(
+  req: Request,
+  inboundUrl: URL,
+): Promise<Response> {
+  const body = await readJsonBody(req, "openai");
+  if (body instanceof Response) return body;
+
+  const modelName = body.model;
+  if (typeof modelName !== "string" || !modelName) {
+    return protocolError("openai", "model is required", 400);
+  }
+
+  return forwardToUpstream({
+    protocol: "openai",
+    modelName,
+    method: "POST",
+    body,
+    inboundUrl,
+    buildUpstreamPath: () => "images/generations",
+  });
+}
+
+async function handleAnthropicMessages(
+  req: Request,
+  inboundUrl: URL,
+  endpoint: "messages" | "messages/count_tokens" = "messages",
+): Promise<Response> {
+  const body = await readJsonBody(req, "anthropic");
+  if (body instanceof Response) return body;
+
+  const modelName = body.model;
+  if (typeof modelName !== "string" || !modelName) {
+    return protocolError("anthropic", "model is required", 400);
+  }
+
+  return forwardToUpstream({
+    protocol: "anthropic",
+    modelName,
+    method: "POST",
+    body,
+    forwardHeaders: req.headers,
+    inboundUrl,
+    buildUpstreamPath: () => endpoint,
+  });
+}
+
+async function handleGeminiGenerate(
+  req: Request,
+  inboundUrl: URL,
+  modelAction: string,
+): Promise<Response> {
+  const { model, action } = parseGeminiModelAction(modelAction);
+  if (!model || !action) {
+    return protocolError(
+      "gemini",
+      `Invalid path; expected /v1beta/models/{model}:{action}`,
+      400,
+    );
+  }
+
+  const body = await readJsonBody(req, "gemini");
+  if (body instanceof Response) return body;
+
+  return forwardToUpstream({
+    protocol: "gemini",
+    modelName: model,
+    method: "POST",
+    body,
+    inboundUrl,
+    buildUpstreamPath: ({ remap, inboundUrl }) => {
+      // We rebuild the query string from inboundUrl, but drop `?key=` since
+      // auth is set via header.
+      const search = new URLSearchParams(inboundUrl.searchParams);
+      search.delete("key");
+      const qs = search.toString();
+      return `v1beta/models/${encodeURIComponent(remap)}:${action}${qs ? `?${qs}` : ""}`;
+    },
+    transformBody: (b) => b,
+  });
+}
+
+function parseGeminiModelAction(raw: string): {
+  model: string;
+  action: string;
+} {
+  const decoded = decodeURIComponent(raw);
+  const idx = decoded.lastIndexOf(":");
+  if (idx === -1) return { model: "", action: "" };
+  return {
+    model: decoded.slice(0, idx),
+    action: decoded.slice(idx + 1),
+  };
+}
+
+async function readJsonBody(
+  req: Request,
+  protocol: Protocol,
+): Promise<Record<string, unknown> | Response> {
+  try {
+    return (await req.json()) as Record<string, unknown>;
+  } catch {
+    return protocolError(protocol, "Invalid JSON body", 400);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Admin API
 // ---------------------------------------------------------------------------
 
-function adminJson(body: object, status = 200) {
+function adminJson(body: unknown, status = 200) {
   return jsonResponse(body, status);
 }
 
@@ -279,6 +489,13 @@ async function persistAdminConfig(next: AppConfig) {
   return adminJson(getAdminSnapshot());
 }
 
+function parseProtocolParam(value: unknown): Protocol | null {
+  if (value === "openai" || value === "anthropic" || value === "gemini") {
+    return value;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
@@ -292,12 +509,42 @@ Bun.serve({
       GET: (req) =>
         handleAdminRequest(req, () => adminJson(getAdminSnapshot())),
     },
+    "/admin/api/providers/:provider/endpoints/:protocol": {
+      PATCH: (req) =>
+        handleAdminRequest(req, async () => {
+          const { provider } = req.params;
+          const protocol = parseProtocolParam(req.params.protocol);
+          if (!protocol) return adminError("Invalid protocol");
+          const body = (await req.json()) as {
+            baseUrl?: string;
+            authHeader?: string;
+          };
+          if (!body.baseUrl) return adminError("baseUrl is required");
+          const next = upsertProviderEndpoint(cfg, provider, protocol, {
+            baseUrl: body.baseUrl,
+            ...(body.authHeader ? { authHeader: body.authHeader } : {}),
+          });
+          return await persistAdminConfig(next);
+        }),
+      DELETE: (req) =>
+        handleAdminRequest(req, () => {
+          const { provider } = req.params;
+          const protocol = parseProtocolParam(req.params.protocol);
+          if (!protocol) return adminError("Invalid protocol");
+          const next = removeProviderEndpoint(cfg, provider, protocol);
+          return persistAdminConfig(next);
+        }),
+    },
     "/admin/api/providers/:provider/models/scan": {
       POST: (req) =>
         handleAdminRequest(req, async () => {
           const { provider } = req.params;
-          const data = await scanProviderModels(cfg, provider);
-          return adminJson({ data });
+          const body = (await req
+            .json()
+            .catch(() => ({}))) as { protocol?: string };
+          const protocol = parseProtocolParam(body.protocol) ?? "openai";
+          const data = await scanProviderModels(cfg, provider, protocol);
+          return adminJson({ data, protocol });
         }),
     },
     "/admin/api/models/mappings": {
@@ -305,13 +552,20 @@ Bun.serve({
         handleAdminRequest(req, async () => {
           const body = (await req.json()) as {
             provider?: string;
+            protocol?: string;
             modelIds?: string[];
           };
           if (!body.provider) return adminError("provider is required");
           if (!Array.isArray(body.modelIds))
             return adminError("modelIds is required");
+          const protocol = parseProtocolParam(body.protocol) ?? "openai";
 
-          const next = addModelMappings(cfg, body.provider, body.modelIds);
+          const next = addModelMappings(
+            cfg,
+            body.provider,
+            protocol,
+            body.modelIds,
+          );
           return await persistAdminConfig(next);
         }),
     },
@@ -320,15 +574,18 @@ Bun.serve({
         handleAdminRequest(req, async () => {
           const body = (await req.json()) as {
             provider?: string;
+            protocol?: string;
             remap?: string;
           };
           if (!body.provider) return adminError("provider is required");
           if (!body.remap) return adminError("remap is required");
+          const protocol = parseProtocolParam(body.protocol) ?? "openai";
 
           const modelId = decodeURIComponent(req.params.modelId);
           const next = addModelProviderMapping(
             cfg,
             modelId,
+            protocol,
             body.provider,
             body.remap,
           );
@@ -336,13 +593,40 @@ Bun.serve({
         }),
       PATCH: (req) =>
         handleAdminRequest(req, async () => {
-          const body = (await req.json()) as { providers?: string[] };
+          const body = (await req.json()) as {
+            protocol?: string;
+            providers?: string[];
+          };
           if (!Array.isArray(body.providers)) {
             return adminError("providers is required");
           }
+          const protocol = parseProtocolParam(body.protocol) ?? "openai";
 
           const modelId = decodeURIComponent(req.params.modelId);
-          const next = reorderModelProviders(cfg, modelId, body.providers);
+          const next = reorderModelProviders(
+            cfg,
+            modelId,
+            protocol,
+            body.providers,
+          );
+          return await persistAdminConfig(next);
+        }),
+      DELETE: (req) =>
+        handleAdminRequest(req, async () => {
+          const body = (await req.json()) as {
+            provider?: string;
+            protocol?: string;
+          };
+          if (!body.provider) return adminError("provider is required");
+          const protocol = parseProtocolParam(body.protocol) ?? "openai";
+
+          const modelId = decodeURIComponent(req.params.modelId);
+          const next = removeModelProviderMapping(
+            cfg,
+            modelId,
+            protocol,
+            body.provider,
+          );
           return await persistAdminConfig(next);
         }),
     },
@@ -350,7 +634,12 @@ Bun.serve({
       POST: (req) =>
         handleAdminRequest(req, async () => {
           const body = (await req.json()) as {
-            kind?: "opencode" | "openai-sdk" | "curl";
+            kind?:
+              | "opencode"
+              | "openai-sdk"
+              | "curl"
+              | "claude-code"
+              | "gemini-cli";
             baseUrl?: string;
             apiKeyEnvVar?: string;
             defaultModel?: string;
@@ -381,23 +670,59 @@ Bun.serve({
 
     // Auth
     const auth = req.headers.get("Authorization");
+    const xApiKey = req.headers.get("x-api-key");
+    const xGoogApiKey = req.headers.get("x-goog-api-key");
+    const queryKey = url.searchParams.get("key");
+
+    const presentedKey =
+      (auth?.startsWith("Bearer ") ? auth.slice(7) : null) ??
+      xApiKey ??
+      xGoogApiKey ??
+      queryKey;
+
     let res: Response;
-    if (auth !== `Bearer ${GATEWAY_KEY}`) {
-      res = openAIError("Invalid API key", "invalid_api_key", null, 401);
+    if (presentedKey !== GATEWAY_KEY) {
+      // For Anthropic / Gemini paths, surface dialect-appropriate auth errors
+      const proto: Protocol = url.pathname.startsWith("/v1beta")
+        ? "gemini"
+        : url.pathname.startsWith("/v1/messages")
+          ? "anthropic"
+          : "openai";
+      res = protocolError(proto, "Invalid API key", 401);
     } else if (url.pathname === "/v1/models" && req.method === "GET") {
-      res = getModelsList();
+      res = getOpenAIModelsList();
     } else if (
       url.pathname === "/v1/chat/completions" &&
       req.method === "POST"
     ) {
-      res = await handleChatCompletion(req);
+      res = await handleOpenAIChatCompletion(req, url);
     } else if (
       url.pathname === "/v1/images/generations" &&
       req.method === "POST"
     ) {
-      res = await handleImageGeneration(req);
+      res = await handleOpenAIImageGeneration(req, url);
+    } else if (url.pathname === "/v1/messages" && req.method === "POST") {
+      res = await handleAnthropicMessages(req, url, "messages");
+    } else if (
+      url.pathname === "/v1/messages/count_tokens" &&
+      req.method === "POST"
+    ) {
+      res = await handleAnthropicMessages(req, url, "messages/count_tokens");
+    } else if (url.pathname === "/v1beta/models" && req.method === "GET") {
+      res = getGeminiModelsList();
+    } else if (
+      url.pathname.startsWith("/v1beta/models/") &&
+      req.method === "POST"
+    ) {
+      const modelAction = url.pathname.slice("/v1beta/models/".length);
+      res = await handleGeminiGenerate(req, url, modelAction);
     } else {
-      res = openAIError("Not found", "not_found", null, 404);
+      const proto: Protocol = url.pathname.startsWith("/v1beta")
+        ? "gemini"
+        : url.pathname.startsWith("/v1/messages")
+          ? "anthropic"
+          : "openai";
+      res = protocolError(proto, "Not found", 404);
     }
 
     const elapsed = performance.now() - start;

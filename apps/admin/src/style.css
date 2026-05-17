@@ -104,6 +104,16 @@ body {
   width: 100%;
 }
 
+.protocol-cell {
+  min-width: 220px;
+}
+
+.endpoint-url {
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
 .config-form {
   max-width: 640px;
 }

@@ -54,6 +54,7 @@ import {
   upsertProviderEndpoint,
 } from "./api/client";
 import { AppShell } from "./components/AppShell";
+import { ProviderPriorityList } from "./components/ProviderPriorityList";
 import { useAdminStore } from "./stores/admin-store";
 
 const queryClient = new QueryClient();
@@ -145,52 +146,33 @@ function ModelsPage() {
     ...PROTOCOLS.map<ColumnsType<AdminModelRoute>[number]>((protocol) => ({
       title: PROTOCOL_LABELS[protocol],
       dataIndex: ["protocols", protocol],
+      width: 260,
       render: (_, record) => {
         const providers = record.protocols[protocol]?.providers ?? [];
         if (providers.length === 0) {
           return <Typography.Text type="secondary">—</Typography.Text>;
         }
         return (
-          <Space direction="vertical" size={4} className="protocol-cell">
-            <Space wrap size={4}>
-              {providers.map((provider, index) => (
-                <Tag
-                  key={`${protocol}-${provider.name}`}
-                  color={index === 0 ? PROTOCOL_COLORS[protocol] : "default"}
-                  closable
-                  onClose={(e) => {
-                    e.preventDefault();
-                    remove.mutate({
-                      modelId: record.id,
-                      protocol,
-                      provider: provider.name,
-                    });
-                  }}
-                >
-                  {index + 1}. {provider.name} → {provider.remap}
-                </Tag>
-              ))}
-            </Space>
-            {providers.length > 1 ? (
-              <Select
-                size="small"
-                mode="multiple"
-                value={providers.map((provider) => provider.name)}
-                className="priority-select"
-                onChange={(next) =>
-                  reorder.mutate({
-                    modelId: record.id,
-                    protocol,
-                    providers: next,
-                  })
-                }
-                options={providers.map((provider) => ({
-                  label: provider.name,
-                  value: provider.name,
-                }))}
-              />
-            ) : null}
-          </Space>
+          <div className="protocol-cell">
+            <ProviderPriorityList
+              providers={providers}
+              primaryColor={PROTOCOL_COLORS[protocol]}
+              onReorder={(next) =>
+                reorder.mutate({
+                  modelId: record.id,
+                  protocol,
+                  providers: next,
+                })
+              }
+              onRemove={(providerName) =>
+                remove.mutate({
+                  modelId: record.id,
+                  protocol,
+                  provider: providerName,
+                })
+              }
+            />
+          </div>
         );
       },
     })),

@@ -8,6 +8,9 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@mini-ai-gateway/core": "workspace:*",
     "@tanstack/react-query": "^5.90.12",
     "@tanstack/react-router": "^1.139.1",

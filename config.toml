@@ -58,6 +58,54 @@ remap = "openai/gpt-5.5"
 name = "aihubmix"
 remap = "gpt-5.5"
 
+[[models."anthropic/claude-sonnet-4.6".protocols.openai.providers]]
+name = "openrouter"
+remap = "anthropic/claude-sonnet-4.6"
+
+[[models."anthropic/claude-sonnet-4.6".protocols.openai.providers]]
+name = "vercel"
+remap = "anthropic/claude-sonnet-4.6"
+
+[[models."anthropic/claude-sonnet-4.6".protocols.openai.providers]]
+name = "aihubmix"
+remap = "claude-sonnet-4-6"
+
+[[models."anthropic/claude-sonnet-4.6".protocols.anthropic.providers]]
+name = "openrouter"
+remap = "anthropic/claude-sonnet-4.6"
+
+[[models."anthropic/claude-sonnet-4.6".protocols.anthropic.providers]]
+name = "vercel"
+remap = "anthropic/claude-sonnet-4.6"
+
+[[models."anthropic/claude-sonnet-4.6".protocols.anthropic.providers]]
+name = "aihubmix"
+remap = "claude-sonnet-4-6"
+
+[[models."anthropic/claude-haiku-4.5".protocols.openai.providers]]
+name = "openrouter"
+remap = "anthropic/claude-haiku-4.5"
+
+[[models."anthropic/claude-haiku-4.5".protocols.openai.providers]]
+name = "vercel"
+remap = "anthropic/claude-haiku-4.5"
+
+[[models."anthropic/claude-haiku-4.5".protocols.openai.providers]]
+name = "aihubmix"
+remap = "claude-haiku-4-5"
+
+[[models."anthropic/claude-haiku-4.5".protocols.anthropic.providers]]
+name = "openrouter"
+remap = "anthropic/claude-haiku-4.5"
+
+[[models."anthropic/claude-haiku-4.5".protocols.anthropic.providers]]
+name = "vercel"
+remap = "anthropic/claude-haiku-4.5"
+
+[[models."anthropic/claude-haiku-4.5".protocols.anthropic.providers]]
+name = "aihubmix"
+remap = "claude-haiku-4-5"
+
 [[models."anthropic/claude-opus-4.7".protocols.openai.providers]]
 name = "openrouter"
 remap = "anthropic/claude-opus-4.7"

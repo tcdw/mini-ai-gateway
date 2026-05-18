@@ -21,7 +21,7 @@
   },
   "scripts": {
     "prepare": "bun run scripts/prepare.ts",
-    "start": "bun run index.ts",
+    "start": "bun run build:admin && NODE_ENV=production bun run index.ts",
     "dev": "bun --hot index.ts",
     "dev:admin": "bun --filter @mini-ai-gateway/admin dev",
     "build:admin": "bun --filter @mini-ai-gateway/admin build",

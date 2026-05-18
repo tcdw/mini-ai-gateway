@@ -28,6 +28,20 @@ import type {
 // ---------------------------------------------------------------------------
 
 const GATEWAY_KEY = process.env.GATEWAY_API_KEY;
+
+function serveProdAdmin(req: Request): Response {
+  const url = new URL(req.url);
+  const filePath = url.pathname.replace(/^\/admin\/?/, "") || "index.html";
+  if (filePath.includes("..")) return new Response("Forbidden", { status: 403 });
+  return new Response(Bun.file(`./dist/admin/${filePath}`));
+}
+
+const isProduction = process.env.NODE_ENV === "production";
+const adminHandler =
+  isProduction && (await Bun.file("./dist/admin/index.html").exists())
+    ? serveProdAdmin
+    : adminIndex;
+
 if (!GATEWAY_KEY) {
   console.error("[Gateway] Fatal: GATEWAY_API_KEY is not set in .env");
   process.exit(1);
@@ -45,6 +59,8 @@ for (const [name, p] of Object.entries(cfg.providers)) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Configuration validation
 // ---------------------------------------------------------------------------
 // Load model metadata (optional — graceful if missing)
 // ---------------------------------------------------------------------------
@@ -567,8 +583,8 @@ function parseProtocolParam(value: unknown): Protocol | null {
 Bun.serve({
   port: PORT,
   routes: {
-    "/admin": adminIndex,
-    "/admin/": adminIndex,
+    "/admin": adminHandler,
+    "/admin/": adminHandler,
     "/admin/api/config": {
       GET: (req) =>
         handleAdminRequest(req, () => adminJson(getAdminSnapshot())),
@@ -728,7 +744,7 @@ Bun.serve({
           return adminJson({ text });
         }),
     },
-    "/admin/*": adminIndex,
+    "/admin/*": adminHandler,
   },
   async fetch(req) {
     const start = performance.now();

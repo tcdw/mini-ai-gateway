@@ -15,43 +15,54 @@ import {
 function tmpPath(prefix: string): string {
   return `${process.env.TMPDIR ?? "/tmp"}/${prefix}-${Date.now()}-${Math.random()
     .toString(36)
-    .slice(2)}.toml`;
+    .slice(2)}.json`;
 }
 
-function legacyTomlFixture(): string {
-  return [
-    '[providers."openrouter"]',
-    'baseUrl = "https://openrouter.ai/api/v1"',
-    'authHeader = "Bearer"',
-    'keyEnvVar = "OPENROUTER_API_KEY"',
-    "",
-    '[[models."openai/gpt-5.5".providers]]',
-    'name = "openrouter"',
-    'remap = "openai/gpt-5.5"',
-    "",
-  ].join("\n");
+function legacyJsonFixture(): string {
+  return JSON.stringify({
+    providers: {
+      openrouter: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        authHeader: "Bearer",
+        keyEnvVar: "OPENROUTER_API_KEY",
+      },
+    },
+    models: {
+      "openai/gpt-5.5": {
+        providers: [{ name: "openrouter", remap: "openai/gpt-5.5" }],
+      },
+    },
+  });
 }
 
-function newTomlFixture(): string {
-  return [
-    '[providers."vercel"]',
-    'keyEnvVar = "VERCEL_AI_KEY"',
-    "",
-    '[providers."vercel".endpoints.openai]',
-    'baseUrl = "https://ai-gateway.vercel.sh/v1"',
-    "",
-    '[providers."vercel".endpoints.anthropic]',
-    'baseUrl = "https://ai-gateway.vercel.sh"',
-    "",
-    '[[models."anthropic/claude-opus-4.7".protocols.openai.providers]]',
-    'name = "vercel"',
-    'remap = "anthropic/claude-opus-4.7"',
-    "",
-    '[[models."anthropic/claude-opus-4.7".protocols.anthropic.providers]]',
-    'name = "vercel"',
-    'remap = "anthropic/claude-opus-4.7"',
-    "",
-  ].join("\n");
+function newJsonFixture(): string {
+  return JSON.stringify({
+    providers: {
+      vercel: {
+        keyEnvVar: "VERCEL_AI_KEY",
+        endpoints: {
+          openai: { baseUrl: "https://ai-gateway.vercel.sh/v1" },
+          anthropic: { baseUrl: "https://ai-gateway.vercel.sh" },
+        },
+      },
+    },
+    models: {
+      "anthropic/claude-opus-4.7": {
+        protocols: {
+          openai: {
+            providers: [
+              { name: "vercel", remap: "anthropic/claude-opus-4.7" },
+            ],
+          },
+          anthropic: {
+            providers: [
+              { name: "vercel", remap: "anthropic/claude-opus-4.7" },
+            ],
+          },
+        },
+      },
+    },
+  });
 }
 
 async function loadFixture(text: string) {
@@ -61,7 +72,7 @@ async function loadFixture(text: string) {
 }
 
 test("legacy config maps flat providers/models to openai protocol", async () => {
-  const cfg = await loadFixture(legacyTomlFixture());
+  const cfg = await loadFixture(legacyJsonFixture());
   const provider = cfg.providers.openrouter!;
 
   expect(provider.endpoints.openai).toEqual({
@@ -79,7 +90,7 @@ test("legacy config maps flat providers/models to openai protocol", async () => 
 });
 
 test("new format with explicit endpoints and protocols round-trips", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const provider = cfg.providers.vercel!;
 
   expect(provider.endpoints.openai?.baseUrl).toBe(
@@ -100,7 +111,7 @@ test("new format with explicit endpoints and protocols round-trips", async () =>
 });
 
 test("addModelMappings appends provider scoped by protocol", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const next = addModelMappings(cfg, "vercel", "anthropic", ["foo/bar"]);
 
   expect(next.models["foo/bar"]!.protocols.anthropic?.providers).toEqual([
@@ -110,7 +121,7 @@ test("addModelMappings appends provider scoped by protocol", async () => {
 });
 
 test("addModelProviderMapping updates remap when provider already present", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const next = addModelProviderMapping(
     cfg,
     "anthropic/claude-opus-4.7",
@@ -125,7 +136,7 @@ test("addModelProviderMapping updates remap when provider already present", asyn
 });
 
 test("removeModelProviderMapping prunes empty protocol/model entries", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const afterRemoveAnthropic = removeModelProviderMapping(
     cfg,
     "anthropic/claude-opus-4.7",
@@ -147,7 +158,7 @@ test("removeModelProviderMapping prunes empty protocol/model entries", async () 
 });
 
 test("reorderModelProviders reorders providers within a protocol", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const seeded = addModelProviderMapping(
     cfg,
     "anthropic/claude-opus-4.7",
@@ -170,7 +181,7 @@ test("reorderModelProviders reorders providers within a protocol", async () => {
 });
 
 test("upsert / remove provider endpoint", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const withGemini = upsertProviderEndpoint(cfg, "vercel", "gemini", {
     baseUrl: "https://example.com",
     authHeader: "x-goog-api-key",
@@ -185,7 +196,7 @@ test("upsert / remove provider endpoint", async () => {
 });
 
 test("toAdminConfigSnapshot exposes endpoints and protocol routes", async () => {
-  const cfg = await loadFixture(newTomlFixture());
+  const cfg = await loadFixture(newJsonFixture());
   const snapshot = toAdminConfigSnapshot(
     cfg,
     {},

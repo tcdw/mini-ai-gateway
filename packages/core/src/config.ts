@@ -11,14 +11,6 @@ import type {
 } from "./types";
 import { PROTOCOLS } from "./types";
 
-function escapeTomlKey(key: string): string {
-  return `"${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function escapeTomlValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 interface LegacyProviderConfig {
   baseUrl?: string;
   authHeader?: string;
@@ -95,10 +87,10 @@ function normalizeConfig(raw: unknown): AppConfig {
 }
 
 export async function readGatewayConfig(
-  configPath = "./config.toml",
+  configPath = "./config.json",
 ): Promise<AppConfig> {
-  const text = await Bun.file(configPath).text();
-  return normalizeConfig(Bun.TOML.parse(text));
+  const raw = await Bun.file(configPath).json();
+  return normalizeConfig(raw);
 }
 
 export async function readModelsMeta(
@@ -110,48 +102,46 @@ export async function readModelsMeta(
 }
 
 export function serializeGatewayConfig(cfg: AppConfig): string {
-  const lines: string[] = [];
-
+  // Re-serialize with a canonical shape so round-trips remain stable.
+  const providers: Record<string, ProviderConfig> = {};
   for (const [name, provider] of Object.entries(cfg.providers)) {
-    lines.push(`[providers.${escapeTomlKey(name)}]`);
-    lines.push(`keyEnvVar = "${escapeTomlValue(provider.keyEnvVar)}"`);
-    lines.push("");
-
+    const endpoints: Partial<Record<Protocol, ProtocolEndpoint>> = {};
     for (const proto of PROTOCOLS) {
       const endpoint = provider.endpoints[proto];
       if (!endpoint) continue;
-      lines.push(
-        `[providers.${escapeTomlKey(name)}.endpoints.${proto}]`,
-      );
-      lines.push(`baseUrl = "${escapeTomlValue(endpoint.baseUrl)}"`);
-      if (endpoint.authHeader) {
-        lines.push(`authHeader = "${escapeTomlValue(endpoint.authHeader)}"`);
-      }
-      lines.push("");
+      endpoints[proto] = {
+        baseUrl: endpoint.baseUrl,
+        ...(endpoint.authHeader ? { authHeader: endpoint.authHeader } : {}),
+      };
     }
+    providers[name] = {
+      keyEnvVar: provider.keyEnvVar,
+      endpoints,
+    };
   }
 
+  const models: Record<string, ModelRoute> = {};
   for (const [modelId, route] of Object.entries(cfg.models)) {
+    const protocols: Partial<Record<Protocol, ProtocolRoute>> = {};
     for (const proto of PROTOCOLS) {
       const protoRoute = route.protocols[proto];
       if (!protoRoute) continue;
-      for (const provider of protoRoute.providers) {
-        lines.push(
-          `[[models.${escapeTomlKey(modelId)}.protocols.${proto}.providers]]`,
-        );
-        lines.push(`name = "${escapeTomlValue(provider.name)}"`);
-        lines.push(`remap = "${escapeTomlValue(provider.remap)}"`);
-        lines.push("");
-      }
+      protocols[proto] = {
+        providers: protoRoute.providers.map((provider) => ({
+          name: provider.name,
+          remap: provider.remap,
+        })),
+      };
     }
+    models[modelId] = { protocols };
   }
 
-  return `${lines.join("\n").trimEnd()}\n`;
+  return `${JSON.stringify({ providers, models }, null, 2)}\n`;
 }
 
 export async function writeGatewayConfig(
   cfg: AppConfig,
-  configPath = "./config.toml",
+  configPath = "./config.json",
 ): Promise<void> {
   await Bun.write(configPath, serializeGatewayConfig(cfg));
 }

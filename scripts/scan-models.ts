@@ -1,32 +1,17 @@
-import config from "../config.toml";
 import { search, confirm } from "@inquirer/prompts";
+import {
+  addModelProviderMapping,
+  readGatewayConfig,
+  readModelsMeta,
+  writeGatewayConfig,
+  type AppConfig,
+  type Protocol,
+  type ProtocolEndpoint,
+} from "@mini-ai-gateway/core";
 
 // ---------------------------------------------------------------------------
-// Types (mirror index.ts)
+// Types (local helpers only — main types come from packages/core)
 // ---------------------------------------------------------------------------
-
-interface ProviderConfig {
-  baseUrl: string;
-  authHeader: string;
-  keyEnvVar: string;
-}
-
-interface ModelProvider {
-  name: string;
-  remap: string;
-}
-
-interface AppConfig {
-  providers: Record<string, ProviderConfig>;
-  models: Record<string, { providers: ModelProvider[] }>;
-}
-
-interface ModelMeta {
-  id: string;
-  name: string;
-  context_window: number;
-  max_output_tokens: number;
-}
 
 interface ProviderModel {
   id: string;
@@ -48,14 +33,6 @@ interface ModelChoice {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function escapeTomlKey(key: string): string {
-  return key.includes('"') ? `"${key.replace(/"/g, '\\"')}"` : `"${key}"`;
-}
-
-function escapeTomlValue(val: string): string {
-  return val.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function formatContext(ctx: number | undefined): string {
   if (!ctx) return "";
   return ctx >= 1000
@@ -76,6 +53,14 @@ function filterChoices(choices: ModelChoice[], query: string): ModelChoice[] {
 function truncateLine(line: string, width: number): string {
   if (line.length <= width) return line;
   return `${line.slice(0, Math.max(0, width - 1))}…`;
+}
+
+function buildAuthHeader(endpoint: ProtocolEndpoint, apiKey: string): Record<string, string> {
+  const headerName = endpoint.authHeader ?? "Bearer";
+  if (headerName.toLowerCase() === "bearer") {
+    return { Authorization: `Bearer ${apiKey}` };
+  }
+  return { [headerName]: apiKey };
 }
 
 async function selectModelsTui(
@@ -224,20 +209,22 @@ let onData: (chunk: string) => void;
 // Main
 // ---------------------------------------------------------------------------
 
+const CONFIG_PATH = "./config.json";
+
 async function main() {
   if (!process.stdin.isTTY) {
     console.error("This script requires an interactive terminal (TTY).");
     process.exit(1);
   }
 
-  const cfg = config as AppConfig;
+  const cfg: AppConfig = await readGatewayConfig(CONFIG_PATH);
 
   // ------------------------------------------------------------------
   // Step 1: Select a provider
   // ------------------------------------------------------------------
   const providerNames = Object.keys(cfg.providers).sort();
   if (providerNames.length === 0) {
-    console.log("No providers found in config.toml");
+    console.log(`No providers found in ${CONFIG_PATH}`);
     process.exit(1);
   }
 
@@ -253,9 +240,16 @@ async function main() {
   });
 
   const providerCfg = cfg.providers[selectedProvider]!;
+  const openaiEndpoint = providerCfg.endpoints.openai;
+  if (!openaiEndpoint) {
+    console.error(
+      `Provider "${selectedProvider}" has no OpenAI-compatible endpoint configured.`
+    );
+    process.exit(1);
+  }
 
   // ------------------------------------------------------------------
-  // Step 2: Fetch models from the provider's /v1/models endpoint
+  // Step 2: Fetch models from the provider's /models endpoint
   // ------------------------------------------------------------------
   const apiKey = process.env[providerCfg.keyEnvVar];
   if (!apiKey) {
@@ -264,16 +258,17 @@ async function main() {
     );
   }
 
-  const headers: Record<string, string> = {};
-  if (apiKey) {
-    headers["Authorization"] = `${providerCfg.authHeader} ${apiKey}`;
-  }
+  const headers: Record<string, string> = apiKey
+    ? buildAuthHeader(openaiEndpoint, apiKey)
+    : {};
 
-  process.stdout.write(`Fetching models from ${providerCfg.baseUrl}/models ...`);
+  process.stdout.write(
+    `Fetching models from ${openaiEndpoint.baseUrl}/models ...`
+  );
 
   let models: ProviderModel[] = [];
   try {
-    const res = await fetch(`${providerCfg.baseUrl}/models`, { headers });
+    const res = await fetch(`${openaiEndpoint.baseUrl}/models`, { headers });
 
     if (!res.ok) {
       console.log(`\nFailed: HTTP ${res.status} ${res.statusText}`);
@@ -284,7 +279,7 @@ async function main() {
 
     const data = (await res.json()) as ModelsListResponse;
     if (!data.data || !Array.isArray(data.data)) {
-      console.log("\nUnexpected response format from /v1/models");
+      console.log("\nUnexpected response format from /models");
       console.error(JSON.stringify(data).slice(0, 500));
       process.exit(1);
     }
@@ -305,23 +300,18 @@ async function main() {
   // ------------------------------------------------------------------
   // Step 3: Load models-meta.json for context window metadata
   // ------------------------------------------------------------------
-  let metaDb: Record<string, ModelMeta> = {};
-  const metaFile = Bun.file("./models-meta.json");
-  if (await metaFile.exists()) {
-    metaDb = await metaFile.json();
-  }
+  const metaDb = await readModelsMeta();
 
   // ------------------------------------------------------------------
-  // Step 4: Build TUI choices (detect already-configured models)
+  // Step 4: Build TUI choices (detect already-configured models on openai protocol)
   // ------------------------------------------------------------------
 
   const configuredProviderModels = new Set<string>();
   for (const [modelId, route] of Object.entries(cfg.models)) {
-    for (const p of route.providers) {
-      if (p.name === selectedProvider) {
-        configuredProviderModels.add(modelId);
-        break;
-      }
+    const openaiRoute = route.protocols.openai;
+    if (!openaiRoute) continue;
+    if (openaiRoute.providers.some((p) => p.name === selectedProvider)) {
+      configuredProviderModels.add(modelId);
     }
   }
 
@@ -367,8 +357,6 @@ async function main() {
     process.exit(0);
   }
 
-  // Filter out any that are already fully configured (shouldn't happen
-  // since they're disabled, but guard anyway)
   const toAdd = selectedModels.filter(
     (id) => !configuredProviderModels.has(id)
   );
@@ -379,25 +367,16 @@ async function main() {
   }
 
   // ------------------------------------------------------------------
-  // Step 6: Generate TOML blocks
-  // ------------------------------------------------------------------
-  let tomlBlocks = "";
-  for (const modelId of toAdd) {
-    const key = escapeTomlKey(modelId);
-    const name = escapeTomlValue(selectedProvider);
-    const remap = escapeTomlValue(modelId);
-    tomlBlocks += `\n[[models.${key}.providers]]\nname = "${name}"\nremap = "${remap}"\n`;
-  }
-
-  // ------------------------------------------------------------------
-  // Step 7: Preview & confirm
+  // Step 6: Preview & confirm
   // ------------------------------------------------------------------
   console.log("\n─── Preview ───");
-  console.log(tomlBlocks.trimEnd());
+  for (const modelId of toAdd) {
+    console.log(`  + ${modelId}  ←  ${selectedProvider} (openai)`);
+  }
   console.log("────────────────\n");
 
   const ok = await confirm({
-    message: `Write ${toAdd.length} model(s) to config.toml?`,
+    message: `Write ${toAdd.length} model(s) to ${CONFIG_PATH}?`,
     default: false,
   });
 
@@ -407,12 +386,22 @@ async function main() {
   }
 
   // ------------------------------------------------------------------
-  // Step 8: Append to config.toml
+  // Step 7: Write to config.json via the core helpers
   // ------------------------------------------------------------------
-  const configPath = "./config.toml";
-  const existingContent = await Bun.file(configPath).text();
-  await Bun.write(configPath, existingContent + tomlBlocks);
-  console.log(`✓ Added ${toAdd.length} model(s) to config.toml`);
+  let nextCfg: AppConfig = cfg;
+  const protocol: Protocol = "openai";
+  for (const modelId of toAdd) {
+    nextCfg = addModelProviderMapping(
+      nextCfg,
+      modelId,
+      protocol,
+      selectedProvider,
+      modelId,
+    );
+  }
+
+  await writeGatewayConfig(nextCfg, CONFIG_PATH);
+  console.log(`✓ Added ${toAdd.length} model(s) to ${CONFIG_PATH}`);
 }
 
 main();

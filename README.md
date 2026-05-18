@@ -67,25 +67,36 @@ DEEPSEEK_API_KEY=sk-...
 XIAOMI_API_KEY=sk-...
 ```
 
-编辑 `config.toml` 定义路由 —— 每个 provider 可以为它实际支持的协议各配一份 endpoint，每个 model 在每种协议下都有自己独立的 provider 优先级列表。详见自带配置。
+编辑 `config.json` 定义路由 —— 每个 provider 可以为它实际支持的协议各配一份 endpoint，每个 model 在每种协议下都有自己独立的 provider 优先级列表。详见自带配置。
 
-```toml
-[providers."vercel"]
-keyEnvVar = "VERCEL_AI_KEY"
-
-[providers."vercel".endpoints.openai]
-baseUrl = "https://ai-gateway.vercel.sh/v1"
-
-[providers."vercel".endpoints.anthropic]
-baseUrl = "https://ai-gateway.vercel.sh/v1"
-
-[[models."anthropic/claude-opus-4.7".protocols.openai.providers]]
-name = "vercel"
-remap = "anthropic/claude-opus-4.7"
-
-[[models."anthropic/claude-opus-4.7".protocols.anthropic.providers]]
-name = "vercel"
-remap = "anthropic/claude-opus-4.7"
+```json
+{
+  "providers": {
+    "vercel": {
+      "keyEnvVar": "VERCEL_AI_KEY",
+      "endpoints": {
+        "openai": { "baseUrl": "https://ai-gateway.vercel.sh/v1" },
+        "anthropic": { "baseUrl": "https://ai-gateway.vercel.sh/v1" }
+      }
+    }
+  },
+  "models": {
+    "anthropic/claude-opus-4.7": {
+      "protocols": {
+        "openai": {
+          "providers": [
+            { "name": "vercel", "remap": "anthropic/claude-opus-4.7" }
+          ]
+        },
+        "anthropic": {
+          "providers": [
+            { "name": "vercel", "remap": "anthropic/claude-opus-4.7" }
+          ]
+        }
+      }
+    }
+  }
+}
 ```
 
 > 💡 旧的扁平格式（`baseUrl/authHeader` 在 `[providers.x]` 顶层、`[[models.x.providers]]` 无 protocol 标签）仍然向后兼容，加载时自动映射为 `openai` 协议；首次通过 Admin UI 写回时会升级为新格式。

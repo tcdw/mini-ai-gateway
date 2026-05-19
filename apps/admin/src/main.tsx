@@ -59,6 +59,8 @@ import { useAdminStore } from "./stores/admin-store";
 
 const queryClient = new QueryClient();
 
+const GATEWAY_CONFIG_QUERY_KEY = ["gateway-config"] as const;
+
 const PROTOCOLS = ["openai", "anthropic", "gemini"] as const satisfies readonly Protocol[];
 const PROTOCOL_LABELS: Record<Protocol, string> = {
   openai: "OpenAI",
@@ -74,9 +76,17 @@ const PROTOCOL_COLORS: Record<Protocol, string> = {
 function useGatewayConfig() {
   const gatewayApiKey = useAdminStore((store) => store.gatewayApiKey);
   const authRevision = useAdminStore((store) => store.authRevision);
+  const queryClient = useQueryClient();
+
+  React.useEffect(() => {
+    // Refetch whenever the gateway API key changes so a new token immediately
+    // pulls fresh data without leaving stale results from the previous key.
+    queryClient.invalidateQueries({ queryKey: GATEWAY_CONFIG_QUERY_KEY });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authRevision]);
 
   return useQuery({
-    queryKey: ["gateway-config", authRevision],
+    queryKey: GATEWAY_CONFIG_QUERY_KEY,
     queryFn: getConfig,
     enabled: gatewayApiKey.trim().length > 0,
   });
@@ -91,6 +101,70 @@ interface ScanResultRow extends ProviderModel {
 
 function getModelShortName(modelId: string) {
   return modelId.includes("/") ? modelId.split("/").pop()! : modelId;
+}
+
+function mapModelRoute(
+  snapshot: AdminConfigSnapshot,
+  modelId: string,
+  transform: (route: AdminModelRoute) => AdminModelRoute,
+): AdminConfigSnapshot {
+  return {
+    ...snapshot,
+    models: snapshot.models.map((route) =>
+      route.id === modelId ? transform(route) : route,
+    ),
+  };
+}
+
+function reorderProvidersInSnapshot(
+  snapshot: AdminConfigSnapshot,
+  modelId: string,
+  protocol: Protocol,
+  nextOrder: string[],
+): AdminConfigSnapshot {
+  return mapModelRoute(snapshot, modelId, (route) => {
+    const protoRoute = route.protocols[protocol];
+    if (!protoRoute) return route;
+    const byName = new Map(protoRoute.providers.map((p) => [p.name, p]));
+    const reordered = nextOrder
+      .map((name) => byName.get(name))
+      .filter((p): p is (typeof protoRoute.providers)[number] => Boolean(p));
+    // Preserve any providers not present in nextOrder (defensive).
+    for (const provider of protoRoute.providers) {
+      if (!nextOrder.includes(provider.name)) reordered.push(provider);
+    }
+    return {
+      ...route,
+      protocols: {
+        ...route.protocols,
+        [protocol]: { ...protoRoute, providers: reordered },
+      },
+    };
+  });
+}
+
+function removeProviderFromSnapshot(
+  snapshot: AdminConfigSnapshot,
+  modelId: string,
+  protocol: Protocol,
+  providerName: string,
+): AdminConfigSnapshot {
+  return mapModelRoute(snapshot, modelId, (route) => {
+    const protoRoute = route.protocols[protocol];
+    if (!protoRoute) return route;
+    return {
+      ...route,
+      protocols: {
+        ...route.protocols,
+        [protocol]: {
+          ...protoRoute,
+          providers: protoRoute.providers.filter(
+            (provider) => provider.name !== providerName,
+          ),
+        },
+      },
+    };
+  });
 }
 
 function flattenProviders(route: AdminModelRoute): {
@@ -120,20 +194,63 @@ function ModelsPage() {
   const queryClient = useQueryClient();
   const reorder = useMutation({
     mutationFn: reorderProviders,
+    // Optimistic update: immediately reflect the new provider order so the
+    // dragged item doesn't flicker back to its original spot while the
+    // request is in flight.
+    onMutate: async ({ modelId, protocol, providers: nextOrder }) => {
+      await queryClient.cancelQueries({ queryKey: GATEWAY_CONFIG_QUERY_KEY });
+      const previous = queryClient.getQueryData<AdminConfigSnapshot>(
+        GATEWAY_CONFIG_QUERY_KEY,
+      );
+      if (previous) {
+        queryClient.setQueryData<AdminConfigSnapshot>(
+          GATEWAY_CONFIG_QUERY_KEY,
+          reorderProvidersInSnapshot(previous, modelId, protocol, nextOrder),
+        );
+      }
+      return { previous };
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, context.previous);
+      }
+      message.error(error.message);
+    },
     onSuccess: (data) => {
-      queryClient.setQueryData(["gateway-config"], data);
+      queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, data);
       message.success("Priority saved");
     },
-    onError: (error) => message.error(error.message),
   });
   const remove = useMutation({
     mutationFn: removeMapping,
+    onMutate: async ({ modelId, protocol, provider }) => {
+      await queryClient.cancelQueries({ queryKey: GATEWAY_CONFIG_QUERY_KEY });
+      const previous = queryClient.getQueryData<AdminConfigSnapshot>(
+        GATEWAY_CONFIG_QUERY_KEY,
+      );
+      if (previous) {
+        queryClient.setQueryData<AdminConfigSnapshot>(
+          GATEWAY_CONFIG_QUERY_KEY,
+          removeProviderFromSnapshot(previous, modelId, protocol, provider),
+        );
+      }
+      return { previous };
+    },
+    onError: (error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, context.previous);
+      }
+      message.error(error.message);
+    },
     onSuccess: (data) => {
-      queryClient.setQueryData(["gateway-config"], data);
+      queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, data);
       message.success("Mapping removed");
     },
-    onError: (error) => message.error(error.message),
   });
+
+  // Lock the whole table while any reorder/remove mutation is in flight so we
+  // don't race overlapping optimistic updates against each other.
+  const isMutating = reorder.isPending || remove.isPending;
 
   const columns: ColumnsType<AdminModelRoute> = [
     {
@@ -157,6 +274,7 @@ function ModelsPage() {
             <ProviderPriorityList
               providers={providers}
               primaryColor={PROTOCOL_COLORS[protocol]}
+              disabled={isMutating}
               onReorder={(next) =>
                 reorder.mutate({
                   modelId: record.id,
@@ -253,7 +371,7 @@ function ProvidersPage() {
   const add = useMutation({
     mutationFn: addMapping,
     onSuccess: (data) => {
-      queryClient.setQueryData(["gateway-config"], data);
+      queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, data);
       setPendingModel(null);
       setAddingModelId("");
       message.success("Mapping added");
@@ -267,7 +385,7 @@ function ProvidersPage() {
   const upsertEndpoint = useMutation({
     mutationFn: upsertProviderEndpoint,
     onSuccess: (data) => {
-      queryClient.setQueryData(["gateway-config"], data);
+      queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, data);
       setEndpointModal(null);
       message.success("Endpoint saved");
     },
@@ -277,7 +395,7 @@ function ProvidersPage() {
   const deleteEndpoint = useMutation({
     mutationFn: removeProviderEndpoint,
     onSuccess: (data) => {
-      queryClient.setQueryData(["gateway-config"], data);
+      queryClient.setQueryData(GATEWAY_CONFIG_QUERY_KEY, data);
       message.success("Endpoint removed");
     },
     onError: (error) => message.error(error.message),

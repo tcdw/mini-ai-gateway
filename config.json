@@ -56,6 +56,14 @@
           "baseUrl": "https://api.xiaomimimo.com/v1"
         }
       }
+    },
+    "moonshot": {
+      "keyEnvVar": "MOONSHOT_API_KEY",
+      "endpoints": {
+        "openai": {
+          "baseUrl": "https://api.moonshot.cn/v1"
+        }
+      }
     }
   },
   "models": {
@@ -419,6 +427,10 @@
       "protocols": {
         "openai": {
           "providers": [
+            {
+              "name": "moonshot",
+              "remap": "kimi-k2.6"
+            },
             {
               "name": "openrouter",
               "remap": "moonshotai/kimi-k2.6"

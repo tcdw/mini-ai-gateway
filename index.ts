@@ -32,7 +32,8 @@ const GATEWAY_KEY = process.env.GATEWAY_API_KEY;
 function serveProdAdmin(req: Request): Response {
   const url = new URL(req.url);
   const filePath = url.pathname.replace(/^\/admin\/?/, "") || "index.html";
-  if (filePath.includes("..")) return new Response("Forbidden", { status: 403 });
+  if (filePath.includes(".."))
+    return new Response("Forbidden", { status: 403 });
   return new Response(Bun.file(`./dist/admin/${filePath}`));
 }
 
@@ -178,7 +179,10 @@ function getGeminiModelsList() {
         baseModelId: modelId,
         version: "001",
         displayName: meta?.name ?? modelId,
-        supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
+        supportedGenerationMethods: [
+          "generateContent",
+          "streamGenerateContent",
+        ],
         ...(meta
           ? {
               inputTokenLimit: meta.context_window,
@@ -226,11 +230,7 @@ async function forwardToUpstream(opts: ForwardOptions): Promise<Response> {
   const { protocol, modelName, method, body, inboundUrl } = opts;
   const route = cfg.models[modelName];
   if (!route) {
-    return protocolError(
-      protocol,
-      `Model '${modelName}' not found`,
-      404,
-    );
+    return protocolError(protocol, `Model '${modelName}' not found`, 404);
   }
 
   const protoRoute = route.protocols[protocol];
@@ -359,10 +359,13 @@ async function forwardToUpstream(opts: ForwardOptions): Promise<Response> {
  * so streaming responses (SSE) remain low-latency.
  */
 function passThroughResponse(upstream: Response): Response {
+  const headers = new Headers(upstream.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: upstream.headers,
+    headers,
   });
 }
 
@@ -619,9 +622,9 @@ Bun.serve({
       POST: (req) =>
         handleAdminRequest(req, async () => {
           const { provider } = req.params;
-          const body = (await req
-            .json()
-            .catch(() => ({}))) as { protocol?: string };
+          const body = (await req.json().catch(() => ({}))) as {
+            protocol?: string;
+          };
           const protocol = parseProtocolParam(body.protocol) ?? "openai";
           const data = await scanProviderModels(cfg, provider, protocol);
           return adminJson({ data, protocol });

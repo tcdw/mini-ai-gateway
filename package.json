@@ -24,6 +24,7 @@
     "start": "bun run build:admin && NODE_ENV=production bun run index.ts",
     "dev": "bun --hot index.ts",
     "dev:admin": "bun --filter @mini-ai-gateway/admin dev",
+    "dev:all": "bun run dev & bun run dev:admin",
     "build:admin": "bun --filter @mini-ai-gateway/admin build",
     "scan-models": "bun run scripts/scan-models.ts",
     "sync-models": "bun run scripts/sync-models.ts"

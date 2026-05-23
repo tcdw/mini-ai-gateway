@@ -1,4 +1,4 @@
-import adminIndex from "./apps/admin/index.html";
+
 import {
   addModelMappings,
   addModelProviderMapping,
@@ -29,19 +29,20 @@ import type {
 
 const GATEWAY_KEY = process.env.GATEWAY_API_KEY;
 
-function serveProdAdmin(req: Request): Response {
+function serveAdminStatic(req: Request): Response {
   const url = new URL(req.url);
   const filePath = url.pathname.replace(/^\/admin\/?/, "") || "index.html";
   if (filePath.includes(".."))
     return new Response("Forbidden", { status: 403 });
-  return new Response(Bun.file(`./dist/admin/${filePath}`));
+  const file = Bun.file(`./dist/admin/${filePath}`);
+  if (file.size) return new Response(file);
+  return new Response(Bun.file("./dist/admin/index.html"));
 }
 
-const isProduction = process.env.NODE_ENV === "production";
-const adminHandler =
-  isProduction && (await Bun.file("./dist/admin/index.html").exists())
-    ? serveProdAdmin
-    : adminIndex;
+const adminStaticExists = await Bun.file("./dist/admin/index.html").exists();
+const adminHandler = adminStaticExists
+  ? serveAdminStatic
+  : () => new Response("Run `bun run build:admin` or use Vite dev server", { status: 404 });
 
 if (!GATEWAY_KEY) {
   console.error("[Gateway] Fatal: GATEWAY_API_KEY is not set in .env");

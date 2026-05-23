@@ -3,8 +3,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --hot ../../index.ts",
-    "build": "bun build ./index.html --outdir ../../dist/admin"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -20,7 +21,11 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@tanstack/router-devtools": "^1.167.0",
+    "@tanstack/router-plugin": "^1.168.10",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.14"
   }
 }

@@ -1,3 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -15,7 +16,11 @@ import {
 import { removeMapping, reorderProviders } from "../api/client";
 import { ProviderPriorityList } from "../components/ProviderPriorityList";
 
-export function ModelsPage() {
+export const Route = createFileRoute("/")({
+  component: ModelsPage,
+});
+
+function ModelsPage() {
   const { message } = App.useApp();
   const query = useGatewayConfig();
   const queryClient = useQueryClient();

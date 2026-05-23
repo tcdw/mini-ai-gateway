@@ -1,6 +1,11 @@
+import { createFileRoute } from "@tanstack/react-router";
 import { Empty, Typography } from "antd";
 
-export function StatsPage() {
+export const Route = createFileRoute("/stats")({
+  component: StatsPage,
+});
+
+function StatsPage() {
   return (
     <section className="page-stack">
       <div className="page-heading">

@@ -1,3 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { App, Button, Form, Input, Select, Typography } from "antd";
 import type { ClientConfigKind } from "@mini-ai-gateway/core";
@@ -5,7 +6,11 @@ import React from "react";
 import { useGatewayConfig } from "../helpers/config-helpers";
 import { generateClientConfig } from "../api/client";
 
-export function ClientConfigPage() {
+export const Route = createFileRoute("/client-config")({
+  component: ClientConfigPage,
+});
+
+function ClientConfigPage() {
   const { message } = App.useApp();
   const query = useGatewayConfig();
   const [form] = Form.useForm();

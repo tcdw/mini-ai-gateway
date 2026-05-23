@@ -1,3 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -33,7 +34,11 @@ import {
   upsertProviderEndpoint,
 } from "../api/client";
 
-export function ProvidersPage() {
+export const Route = createFileRoute("/providers")({
+  component: ProvidersPage,
+});
+
+function ProvidersPage() {
   const { message } = App.useApp();
   const query = useGatewayConfig();
   const queryClient = useQueryClient();

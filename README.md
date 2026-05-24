@@ -134,3 +134,13 @@ http://localhost:3000/admin
 ```
 
 Admin API 使用 `GATEWAY_API_KEY` 鉴权。打开页面后，在右上角填入你的 `GATEWAY_API_KEY` 即可使用管理台。
+
+## 在生产环境部署
+
+```bash
+# 新 Clone 或者更新后都要先把 Admin Panel 构建一遍
+bun run build:admin
+
+# 启动服务端。可以使用 `pm2` 等工具使其持续运行
+bun run start
+```

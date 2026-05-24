@@ -297,5 +297,19 @@
         "text"
       ]
     }
+  },
+  "qwen/qwen3.7-max": {
+    "id": "qwen/qwen3.7-max",
+    "name": "Qwen3.7 Max",
+    "context_window": 1000000,
+    "max_output_tokens": 65536,
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    }
   }
 }

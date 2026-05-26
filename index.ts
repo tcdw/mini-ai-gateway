@@ -180,10 +180,7 @@ function getGeminiModelsList() {
         baseModelId: modelId,
         version: "001",
         displayName: meta?.name ?? modelId,
-        supportedGenerationMethods: [
-          "generateContent",
-          "streamGenerateContent",
-        ],
+        supportedGenerationMethods: getGeminiSupportedGenerationMethods(modelId),
         ...(meta
           ? {
               inputTokenLimit: meta.context_window,
@@ -193,6 +190,14 @@ function getGeminiModelsList() {
       };
     });
   return jsonResponse({ models }, 200);
+}
+
+function getGeminiSupportedGenerationMethods(modelId: string): string[] {
+  const outputModalities = modelsMeta[modelId]?.modalities?.output ?? [];
+  if (outputModalities.includes("embedding") || modelId.includes("embedding")) {
+    return ["embedContent", "batchEmbedContents"];
+  }
+  return ["generateContent", "streamGenerateContent"];
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +420,28 @@ async function handleOpenAIImageGeneration(
     body,
     inboundUrl,
     buildUpstreamPath: () => "images/generations",
+  });
+}
+
+async function handleOpenAIEmbeddings(
+  req: Request,
+  inboundUrl: URL,
+): Promise<Response> {
+  const body = await readJsonBody(req, "openai");
+  if (body instanceof Response) return body;
+
+  const modelName = body.model;
+  if (typeof modelName !== "string" || !modelName) {
+    return protocolError("openai", "model is required", 400);
+  }
+
+  return forwardToUpstream({
+    protocol: "openai",
+    modelName,
+    method: "POST",
+    body,
+    inboundUrl,
+    buildUpstreamPath: () => "embeddings",
   });
 }
 
@@ -816,6 +843,8 @@ Bun.serve({
       req.method === "POST"
     ) {
       res = await handleOpenAIImageGeneration(req, url);
+    } else if (url.pathname === "/v1/embeddings" && req.method === "POST") {
+      res = await handleOpenAIEmbeddings(req, url);
     } else if (url.pathname === "/v1/messages" && req.method === "POST") {
       res = await handleAnthropicMessages(req, url, "messages");
     } else if (

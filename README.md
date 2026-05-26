@@ -4,12 +4,12 @@
 
 专为“自己使用多渠道 API”的场景设计，将散落在各处的 Provider（OpenRouter、Vercel AI Gateway、AiHubMix、Google 官方等）收拢为一个统一的入口。客户端只需认准统一的虚拟模型 ID（如 `openai/gpt-5.5`），网关会按配置顺序使用第一个可用 Provider，遇 429/5xx 自动回退到下一个。
 
-同一个模型可以同时通过 **OpenAI Chat Completions**、**Anthropic Messages**、**Google Gemini** 三种原生协议暴露 —— 客户端用什么协议打进来，网关就把请求**原样透传**给同样讲该协议的上游。不做协议翻译。
+同一个模型可以同时通过 **OpenAI Chat Completions / Images / Embeddings**、**Anthropic Messages**、**Google Gemini** 三种原生协议暴露 —— 客户端用什么协议打进来，网关就把请求**原样透传**给同样讲该协议的上游。不做协议翻译。
 
 ## ✨ 特性 (Features)
 
 *   **极简核心**：基于 [Bun](https://bun.sh) 原生 HTTP `serve()` 构建，零外部依赖，极速启动与响应。
-*   **多协议透传**：同时支持 OpenAI Chat Completions / Images、Anthropic Messages、Google Gemini 三种原生协议入口。
+*   **多协议透传**：同时支持 OpenAI Chat Completions / Images / Embeddings、Anthropic Messages、Google Gemini 三种原生协议入口。
 *   **协议感知 fallback**：每个 (model, protocol) 组合都有独立的 provider 优先级，互不干扰；遇 429/5xx 自动跳过到下一个。
 *   **配置即路由**：使用直观的 TOML 配置文件定义 Provider 与模型映射。
 *   **本地 Admin UI**：内置 React 管理台，支持「Provider × Protocol 支持矩阵」、按协议调整路由、扫描上游模型、生成客户端配置。
@@ -30,12 +30,15 @@
 | ----------------------------------------------------- | :----: | :-------: | --- |
 | `/v1/chat/completions`                                | POST   | OpenAI    | OpenAI Chat Completions |
 | `/v1/images/generations`                              | POST   | OpenAI    | OpenAI Image Generation |
+| `/v1/embeddings`                                      | POST   | OpenAI    | OpenAI Embeddings |
 | `/v1/models`                                          | GET    | OpenAI    | 列出所有暴露 openai 协议的模型 |
 | `/v1/messages`                                        | POST   | Anthropic | Anthropic Messages API |
 | `/v1/messages/count_tokens`                           | POST   | Anthropic | Anthropic 计算 token 数 |
 | `/v1beta/models`                                      | GET    | Gemini    | 列出所有暴露 gemini 协议的模型 |
 | `/v1beta/models/{model}:generateContent`              | POST   | Gemini    | Gemini 同步生成 |
 | `/v1beta/models/{model}:streamGenerateContent`        | POST   | Gemini    | Gemini SSE 流式生成 |
+| `/v1beta/models/{model}:embedContent`                 | POST   | Gemini    | Gemini Embeddings |
+| `/v1beta/models/{model}:batchEmbedContents`           | POST   | Gemini    | Gemini 批量 Embeddings |
 | `/v1beta/models/{model}:countTokens`                  | POST   | Gemini    | Gemini 计算 token 数 |
 
 认证支持三种 header，**均使用同一个 `GATEWAY_API_KEY`**：

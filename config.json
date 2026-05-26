@@ -103,6 +103,18 @@
         }
       }
     },
+    "openai/text-embedding-3-large": {
+      "protocols": {
+        "openai": {
+          "providers": [
+            {
+              "name": "vercel",
+              "remap": "openai/text-embedding-3-large"
+            }
+          ]
+        }
+      }
+    },
     "anthropic/claude-sonnet-4.6": {
       "protocols": {
         "openai": {
@@ -234,6 +246,26 @@
             {
               "name": "google-official",
               "remap": "gemini-3.1-pro-preview"
+            }
+          ]
+        }
+      }
+    },
+    "google/gemini-embedding-2": {
+      "protocols": {
+        "openai": {
+          "providers": [
+            {
+              "name": "vercel",
+              "remap": "google/gemini-embedding-2"
+            }
+          ]
+        },
+        "gemini": {
+          "providers": [
+            {
+              "name": "google-official",
+              "remap": "gemini-embedding-2"
             }
           ]
         }

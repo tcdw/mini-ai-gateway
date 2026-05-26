@@ -494,6 +494,34 @@
           ]
         }
       }
+    },
+    "google/gemini-3.5-flash": {
+      "protocols": {
+        "openai": {
+          "providers": [
+            {
+              "name": "openrouter",
+              "remap": "google/gemini-3.5-flash"
+            },
+            {
+              "name": "vercel",
+              "remap": "google/gemini-3.5-flash"
+            },
+            {
+              "name": "aihubmix",
+              "remap": "gemini-3.5-flash"
+            }
+          ]
+        },
+        "gemini": {
+          "providers": [
+            {
+              "name": "google-official",
+              "remap": "gemini-3.5-flash"
+            }
+          ]
+        }
+      }
     }
   }
 }

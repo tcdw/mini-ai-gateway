@@ -445,6 +445,28 @@ async function handleOpenAIEmbeddings(
   });
 }
 
+async function handleOpenAIResponses(
+  req: Request,
+  inboundUrl: URL,
+): Promise<Response> {
+  const body = await readJsonBody(req, "openai");
+  if (body instanceof Response) return body;
+
+  const modelName = body.model;
+  if (typeof modelName !== "string" || !modelName) {
+    return protocolError("openai", "model is required", 400);
+  }
+
+  return forwardToUpstream({
+    protocol: "openai",
+    modelName,
+    method: "POST",
+    body,
+    inboundUrl,
+    buildUpstreamPath: () => "responses",
+  });
+}
+
 async function handleAnthropicMessages(
   req: Request,
   inboundUrl: URL,
@@ -845,6 +867,8 @@ Bun.serve({
       res = await handleOpenAIImageGeneration(req, url);
     } else if (url.pathname === "/v1/embeddings" && req.method === "POST") {
       res = await handleOpenAIEmbeddings(req, url);
+    } else if (url.pathname === "/v1/responses" && req.method === "POST") {
+      res = await handleOpenAIResponses(req, url);
     } else if (url.pathname === "/v1/messages" && req.method === "POST") {
       res = await handleAnthropicMessages(req, url, "messages");
     } else if (

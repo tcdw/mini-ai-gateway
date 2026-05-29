@@ -31,6 +31,7 @@
 | `/v1/chat/completions`                                | POST   | OpenAI    | OpenAI Chat Completions |
 | `/v1/images/generations`                              | POST   | OpenAI    | OpenAI Image Generation |
 | `/v1/embeddings`                                      | POST   | OpenAI    | OpenAI Embeddings |
+| `/v1/responses`                                       | POST   | OpenAI    | OpenAI Responses API |
 | `/v1/models`                                          | GET    | OpenAI    | 列出所有暴露 openai 协议的模型 |
 | `/v1/messages`                                        | POST   | Anthropic | Anthropic Messages API |
 | `/v1/messages/count_tokens`                           | POST   | Anthropic | Anthropic 计算 token 数 |

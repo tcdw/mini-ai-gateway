@@ -223,6 +223,42 @@
         }
       }
     },
+    "anthropic/claude-opus-4.8": {
+      "protocols": {
+        "openai": {
+          "providers": [
+            {
+              "name": "openrouter",
+              "remap": "anthropic/claude-opus-4.8"
+            },
+            {
+              "name": "vercel",
+              "remap": "anthropic/claude-opus-4.8"
+            },
+            {
+              "name": "aihubmix",
+              "remap": "claude-opus-4-8"
+            }
+          ]
+        },
+        "anthropic": {
+          "providers": [
+            {
+              "name": "openrouter",
+              "remap": "anthropic/claude-opus-4.8"
+            },
+            {
+              "name": "vercel",
+              "remap": "anthropic/claude-opus-4.8"
+            },
+            {
+              "name": "aihubmix",
+              "remap": "claude-opus-4-8"
+            }
+          ]
+        }
+      }
+    },
     "google/gemini-3.1-pro-preview": {
       "protocols": {
         "openai": {

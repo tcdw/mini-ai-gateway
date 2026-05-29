@@ -15,15 +15,183 @@
       ]
     }
   },
-  "deepseek/deepseek-v3.2": {
-    "id": "deepseek/deepseek-v3.2",
-    "name": "DeepSeek V3.2",
-    "context_window": 163000,
-    "max_output_tokens": 65536
+  "openai/gpt-image-2": {
+    "id": "openai/gpt-image-2",
+    "name": "GPT-Image-2",
+    "context_window": 8192,
+    "max_output_tokens": 4096,
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    }
+  },
+  "openai/text-embedding-3-large": {
+    "id": "openai/text-embedding-3-large",
+    "name": "text-embedding-3-large",
+    "context_window": 8192,
+    "max_output_tokens": 1536,
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "anthropic/claude-sonnet-4.6": {
+    "id": "anthropic/claude-sonnet-4.6",
+    "name": "Claude Sonnet 4.6",
+    "context_window": 1000000,
+    "max_output_tokens": 128000,
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "anthropic/claude-haiku-4.5": {
+    "id": "anthropic/claude-haiku-4.5",
+    "name": "Anthropic: Claude Haiku 4.5",
+    "context_window": 200000,
+    "max_output_tokens": 64000,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "anthropic/claude-opus-4.7": {
+    "id": "anthropic/claude-opus-4.7",
+    "name": "Anthropic: Claude Opus 4.7",
+    "context_window": 1000000,
+    "max_output_tokens": 128000,
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "anthropic/claude-opus-4.8": {
+    "id": "anthropic/claude-opus-4.8",
+    "name": "Claude Opus 4.8",
+    "context_window": 1000000,
+    "max_output_tokens": 128000,
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    }
   },
   "google/gemini-3.1-pro-preview": {
     "id": "google/gemini-3.1-pro-preview",
     "name": "Google: Gemini 3.1 Pro Preview",
+    "context_window": 1048576,
+    "max_output_tokens": 65536,
+    "modalities": {
+      "input": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "google/gemini-embedding-2": {
+    "id": "google/gemini-embedding-2",
+    "name": "Gemini Embedding 2",
+    "context_window": 8192,
+    "max_output_tokens": 4096,
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "google/gemini-3.1-flash-image-preview": {
+    "id": "google/gemini-3.1-flash-image-preview",
+    "name": "Google: Nano Banana 2 (Gemini 3.1 Flash Image Preview)",
+    "context_window": 65536,
+    "max_output_tokens": 65536,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "image",
+        "text"
+      ]
+    }
+  },
+  "google/gemini-3-pro-image-preview": {
+    "id": "google/gemini-3-pro-image-preview",
+    "name": "Google: Nano Banana Pro (Gemini 3 Pro Image Preview)",
+    "context_window": 65536,
+    "max_output_tokens": 32768,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "image",
+        "text"
+      ]
+    }
+  },
+  "google/gemini-3.1-flash-lite": {
+    "id": "google/gemini-3.1-flash-lite",
+    "name": "Google: Gemini 3.1 Flash Lite",
+    "context_window": 1048576,
+    "max_output_tokens": 65536,
+    "modalities": {
+      "input": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  "google/gemini-3.1-flash-lite-preview": {
+    "id": "google/gemini-3.1-flash-lite-preview",
+    "name": "Google: Gemini 3.1 Flash Lite Preview",
     "context_window": 1048576,
     "max_output_tokens": 65536,
     "modalities": {
@@ -67,25 +235,11 @@
       ]
     }
   },
-  "anthropic/claude-opus-4.7": {
-    "id": "anthropic/claude-opus-4.7",
-    "name": "Claude Opus 4.7",
-    "context_window": 409600,
-    "max_output_tokens": 128000,
-    "modalities": {
-      "input": [
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
   "xiaomi/mimo-v2.5-pro": {
     "id": "xiaomi/mimo-v2.5-pro",
-    "name": "MiMo-V2.5-Pro",
+    "name": "Xiaomi: MiMo V2.5 Pro",
     "context_window": 1048576,
-    "max_output_tokens": 16384,
+    "max_output_tokens": 131072,
     "modalities": {
       "input": [
         "text"
@@ -97,35 +251,15 @@
   },
   "xiaomi/mimo-v2.5": {
     "id": "xiaomi/mimo-v2.5",
-    "name": "MiMo-V2.5",
-    "context_window": 262144,
-    "max_output_tokens": 16384,
+    "name": "Xiaomi: MiMo-V2.5",
+    "context_window": 1048576,
+    "max_output_tokens": 131072,
     "modalities": {
       "input": [
         "text",
         "image",
         "audio",
         "video"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "qwen/qwen3.6-max-preview": {
-    "id": "qwen/qwen3.6-max-preview",
-    "name": "Qwen: Qwen3.6 Max Preview",
-    "context_window": 262144,
-    "max_output_tokens": 65536
-  },
-  "z-ai/glm-5.1": {
-    "id": "z-ai/glm-5.1",
-    "name": "Z.ai: GLM 5.1",
-    "context_window": 202752,
-    "max_output_tokens": 131072,
-    "modalities": {
-      "input": [
-        "text"
       ],
       "output": [
         "text"
@@ -147,179 +281,29 @@
       ]
     }
   },
+  "z-ai/glm-5.1": {
+    "id": "z-ai/glm-5.1",
+    "name": "Z.ai: GLM 5.1",
+    "context_window": 202752,
+    "max_output_tokens": 131072,
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
   "moonshotai/kimi-k2.6": {
     "id": "moonshotai/kimi-k2.6",
     "name": "Kimi K2.6",
-    "context_window": 256000,
-    "max_output_tokens": 65536,
+    "context_window": 262144,
+    "max_output_tokens": 262144,
     "modalities": {
       "input": [
         "text",
         "image"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "google/gemini-3.1-flash-image-preview": {
-    "id": "google/gemini-3.1-flash-image-preview",
-    "name": "Google: Nano Banana 2 (Gemini 3.1 Flash Image Preview)",
-    "context_window": 65536,
-    "max_output_tokens": 65536,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "image",
-        "text"
-      ]
-    }
-  },
-  "google/gemini-3-pro-image-preview": {
-    "id": "google/gemini-3-pro-image-preview",
-    "name": "Google: Nano Banana Pro (Gemini 3 Pro Image Preview)",
-    "context_window": 65536,
-    "max_output_tokens": 32768,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "image",
-        "text"
-      ]
-    }
-  },
-  "google/gemini-2.5-flash-image": {
-    "id": "google/gemini-2.5-flash-image",
-    "name": "Google: Nano Banana (Gemini 2.5 Flash Image)",
-    "context_window": 32768,
-    "max_output_tokens": 32768,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "image",
-        "text"
-      ]
-    }
-  },
-  "openai/gpt-5-image": {
-    "id": "openai/gpt-5-image",
-    "name": "GPT-5 Image",
-    "context_window": 400000,
-    "max_output_tokens": 128000
-  },
-  "openai/gpt-image-2": {
-    "id": "openai/gpt-image-2",
-    "name": "GPT-Image-2",
-    "context_window": 8192,
-    "max_output_tokens": 4096,
-    "modalities": {
-      "input": [
-        "text",
-        "image"
-      ],
-      "output": [
-        "image"
-      ]
-    }
-  },
-  "openai/text-embedding-3-large": {
-    "id": "openai/text-embedding-3-large",
-    "name": "text-embedding-3-large",
-    "context_window": 8192,
-    "max_output_tokens": 1536,
-    "modalities": {
-      "input": [
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "google/gemini-embedding-2": {
-    "id": "google/gemini-embedding-2",
-    "name": "Gemini Embedding 2",
-    "context_window": 8192,
-    "max_output_tokens": 4096,
-    "modalities": {
-      "input": [
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "anthropic/claude-sonnet-4.6": {
-    "id": "anthropic/claude-sonnet-4.6",
-    "name": "Claude Sonnet 4.6",
-    "context_window": 1000000,
-    "max_output_tokens": 128000,
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "anthropic/claude-haiku-4.5": {
-    "id": "anthropic/claude-haiku-4.5",
-    "name": "Anthropic: Claude Haiku 4.5",
-    "context_window": 200000,
-    "max_output_tokens": 64000,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "google/gemini-3.1-flash-lite": {
-    "id": "google/gemini-3.1-flash-lite",
-    "name": "Google: Gemini 3.1 Flash Lite",
-    "context_window": 1048576,
-    "max_output_tokens": 65536,
-    "modalities": {
-      "input": [
-        "audio",
-        "image",
-        "pdf",
-        "text",
-        "video"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  "google/gemini-3.1-flash-lite-preview": {
-    "id": "google/gemini-3.1-flash-lite-preview",
-    "name": "Google: Gemini 3.1 Flash Lite Preview",
-    "context_window": 1048576,
-    "max_output_tokens": 65536,
-    "modalities": {
-      "input": [
-        "audio",
-        "image",
-        "pdf",
-        "text",
-        "video"
       ],
       "output": [
         "text"
@@ -328,7 +312,7 @@
   },
   "qwen/qwen3.7-max": {
     "id": "qwen/qwen3.7-max",
-    "name": "Qwen3.7 Max",
+    "name": "Qwen3.7-Max",
     "context_window": 1000000,
     "max_output_tokens": 65536,
     "modalities": {
@@ -342,16 +326,16 @@
   },
   "google/gemini-3.5-flash": {
     "id": "google/gemini-3.5-flash",
-    "name": "Gemini 3.5 Flash",
+    "name": "Google: Gemini 3.5 Flash",
     "context_window": 1048576,
     "max_output_tokens": 65536,
     "modalities": {
       "input": [
-        "text",
-        "image",
-        "video",
         "audio",
-        "pdf"
+        "image",
+        "pdf",
+        "text",
+        "video"
       ],
       "output": [
         "text"

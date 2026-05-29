@@ -70,6 +70,9 @@
       "endpoints": {
         "openai": {
           "baseUrl": "https://api.openai.com/v1"
+        },
+        "openai-responses": {
+          "baseUrl": "https://api.openai.com/v1"
         }
       }
     }
@@ -93,6 +96,14 @@
             },
             {
               "name": "aihubmix",
+              "remap": "gpt-5.5"
+            }
+          ]
+        },
+        "openai-responses": {
+          "providers": [
+            {
+              "name": "openai-official",
               "remap": "gpt-5.5"
             }
           ]

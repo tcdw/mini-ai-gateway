@@ -1,7 +1,8 @@
-export type Protocol = "openai" | "anthropic" | "gemini";
+export type Protocol = "openai" | "openai-responses" | "anthropic" | "gemini";
 
 export const PROTOCOLS: readonly Protocol[] = [
   "openai",
+  "openai-responses",
   "anthropic",
   "gemini",
 ] as const;
@@ -14,9 +15,10 @@ export interface ProtocolEndpoint {
    * - "x-api-key" → "x-api-key: <key>"  (Anthropic native)
    * - "x-goog-api-key" → "x-goog-api-key: <key>"  (Gemini)
    * If omitted, defaults per protocol:
-   *   openai     → "Bearer"
-   *   anthropic  → "Bearer"
-   *   gemini     → "x-goog-api-key"
+   *   openai           → "Bearer"
+   *   openai-responses → "Bearer"
+   *   anthropic        → "Bearer"
+   *   gemini           → "x-goog-api-key"
    */
   authHeader?: string;
 }

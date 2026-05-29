@@ -449,16 +449,16 @@ async function handleOpenAIResponses(
   req: Request,
   inboundUrl: URL,
 ): Promise<Response> {
-  const body = await readJsonBody(req, "openai");
+  const body = await readJsonBody(req, "openai-responses");
   if (body instanceof Response) return body;
 
   const modelName = body.model;
   if (typeof modelName !== "string" || !modelName) {
-    return protocolError("openai", "model is required", 400);
+    return protocolError("openai-responses", "model is required", 400);
   }
 
   return forwardToUpstream({
-    protocol: "openai",
+    protocol: "openai-responses",
     modelName,
     method: "POST",
     body,
@@ -566,6 +566,7 @@ function wantsAnthropicModels(req: Request): boolean {
 
 function inferProtocolFromPath(pathname: string): Protocol {
   if (pathname.startsWith("/v1beta")) return "gemini";
+  if (pathname === "/v1/responses") return "openai-responses";
   if (
     pathname === "/anthropic" ||
     pathname.startsWith("/anthropic/") ||
@@ -623,7 +624,12 @@ async function persistAdminConfig(next: AppConfig) {
 }
 
 function parseProtocolParam(value: unknown): Protocol | null {
-  if (value === "openai" || value === "anthropic" || value === "gemini") {
+  if (
+    value === "openai" ||
+    value === "openai-responses" ||
+    value === "anthropic" ||
+    value === "gemini"
+  ) {
     return value;
   }
   return null;

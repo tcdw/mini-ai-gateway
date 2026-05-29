@@ -31,7 +31,7 @@
 | `/v1/chat/completions`                                | POST   | OpenAI    | OpenAI Chat Completions |
 | `/v1/images/generations`                              | POST   | OpenAI    | OpenAI Image Generation |
 | `/v1/embeddings`                                      | POST   | OpenAI    | OpenAI Embeddings |
-| `/v1/responses`                                       | POST   | OpenAI    | OpenAI Responses API |
+| `/v1/responses`                                       | POST   | OpenAI Responses | OpenAI Responses API（独立协议，仅路由到支持该协议的源） |
 | `/v1/models`                                          | GET    | OpenAI    | 列出所有暴露 openai 协议的模型 |
 | `/v1/messages`                                        | POST   | Anthropic | Anthropic Messages API |
 | `/v1/messages/count_tokens`                           | POST   | Anthropic | Anthropic 计算 token 数 |
@@ -41,6 +41,8 @@
 | `/v1beta/models/{model}:embedContent`                 | POST   | Gemini    | Gemini Embeddings |
 | `/v1beta/models/{model}:batchEmbedContents`           | POST   | Gemini    | Gemini 批量 Embeddings |
 | `/v1beta/models/{model}:countTokens`                  | POST   | Gemini    | Gemini 计算 token 数 |
+
+> **OpenAI Chat Completions 与 Responses 是两个独立协议。** `openai` 协议（`/v1/chat/completions`）被大量第三方源兼容；`openai-responses` 协议（`/v1/responses`）是 OpenAI 独家、携带加密上下文，只能路由到声明支持它的源（如 `openai-official`）。两者在 `config.json` 里各自维护 provider 链，互不 fallback，避免 Responses 请求被转发到不支持的第三方源。
 
 认证支持三种 header，**均使用同一个 `GATEWAY_API_KEY`**：
 

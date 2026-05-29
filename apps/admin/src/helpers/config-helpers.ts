@@ -11,14 +11,21 @@ import { useAdminStore } from "../stores/admin-store";
 
 export const GATEWAY_CONFIG_QUERY_KEY = ["gateway-config"] as const;
 
-export const PROTOCOLS = ["openai", "anthropic", "gemini"] as const satisfies readonly Protocol[];
+export const PROTOCOLS = [
+  "openai",
+  "openai-responses",
+  "anthropic",
+  "gemini",
+] as const satisfies readonly Protocol[];
 export const PROTOCOL_LABELS: Record<Protocol, string> = {
   openai: "OpenAI",
+  "openai-responses": "OpenAI Responses",
   anthropic: "Anthropic",
   gemini: "Gemini",
 };
 export const PROTOCOL_COLORS: Record<Protocol, string> = {
   openai: "geekblue",
+  "openai-responses": "cyan",
   anthropic: "purple",
   gemini: "magenta",
 };

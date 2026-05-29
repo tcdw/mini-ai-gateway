@@ -17,7 +17,7 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import type { AdminProvider } from "@mini-ai-gateway/core";
+import type { AdminProvider, Protocol } from "@mini-ai-gateway/core";
 import React from "react";
 import {
   GATEWAY_CONFIG_QUERY_KEY,
@@ -43,7 +43,7 @@ function ProvidersPage() {
   const query = useGatewayConfig();
   const queryClient = useQueryClient();
   const [selectedProvider, setSelectedProvider] = React.useState("");
-  const [scanProtocol, setScanProtocol] = React.useState<"openai" | "anthropic" | "gemini">("openai");
+  const [scanProtocol, setScanProtocol] = React.useState<Protocol>("openai");
   const [searchTerm, setSearchTerm] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "new" | "same-name" | "configured">(
     "all",
